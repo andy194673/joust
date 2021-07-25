@@ -1,6 +1,9 @@
+'''
+	File adapted from https://github.com/jasonwu0731/trade-dst/blob/master/utils/fix_label.py
+'''
+
 import re
 
-#fin = open('utils/mapping.pair','r')
 fin = open('data_preprocess/mapping.pair','r')
 replacements = []
 for line in fin.readlines():
@@ -8,7 +11,6 @@ for line in fin.readlines():
 	replacements.append((' ' + tok_from + ' ', ' ' + tok_to + ' '))
 
 def fix_general_label_error(labels, type, slots):
-#	label_dict = dict([ (l[0], l[1]) for l in labels]) if type else dict([ (l["slots"][0][0], l["slots"][0][1]) for l in labels])
 	if not type:
 		label_dict = dict([ (l["slots"][0][0], l["slots"][0][1]) for l in labels])
 	else:
@@ -77,7 +79,6 @@ def fix_general_label_error(labels, type, slots):
 		"02:45 .": "02:45"
 		}
 
-	# remove wrong value label, andy
 	WRONG_VALUE = ['cambridge be', 'dif', 'city stop rest', 'belf', 'hol', 'doubletree by hilton cambridge']
 	remove_slots = []
 	for slot, value in label_dict.items():
@@ -120,8 +121,8 @@ def fix_general_label_error(labels, type, slots):
 			if  slot == "restaurant-area" and label_dict[slot] in ["stansted airport", "cambridge", "silver street"] or \
 				slot == "attraction-area" and label_dict[slot] in ["norwich", "ely", "museum", "same area as hotel"]:
 				label_dict[slot] = "none"
-
 	return label_dict
+
 
 def insertSpace(token, text):
 	sidx = 0
@@ -140,6 +141,7 @@ def insertSpace(token, text):
 			text = text[:sidx + 1] + ' ' + text[sidx + 1:]
 		sidx += 1
 	return text
+
 
 def dst_normalize(text, clean_value=True):
 	'''

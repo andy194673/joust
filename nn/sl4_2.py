@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from nn.model3 import Model
 #from utils.util import remove_pad_sent, pad_sent
-from utils.checkInfoTurn4 import decideTurnDomain, checkTurnStage, formKeySlot, getSlotWithActInTurn
+from utils.check_turn_info import decide_turn_domain, checkTurnStage, formKeySlot, getSlotWithActInTurn
 #from utils.checkInfoTurn import decideTurnDomain, checkTurnStage, formKeySlot, getSlotWithActInTurn
 from utils.criterion import NLLEntropyValid
 from nn.encoder import RNN
@@ -461,7 +461,7 @@ class CorpusTraining(nn.Module):
 		reward = []
 		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
 
-			turn_domain = decideTurnDomain(act_usr, '', domain_prev)
+			turn_domain = decide_turn_domain(act_usr, '', domain_prev)
 			r = 0 # 0 for non-transit turn
 			if side_idx != 0 and turn_domain != domain_prev: # domain transit happens
 				if domain_prev in done_domain and turn_domain not in done_domain: # good transit
@@ -669,7 +669,7 @@ class CorpusTraining(nn.Module):
 		domain_history_usr = []
 #		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
 		for act_usr in gen_dial['act_usr']:
-			turn_domain = decideTurnDomain(act_usr, '', domain_prev)
+			turn_domain = decide_turn_domain(act_usr, '', domain_prev)
 			domain_history_usr.append(turn_domain)
 			domain_prev = turn_domain
 
@@ -678,7 +678,7 @@ class CorpusTraining(nn.Module):
 		domain_history_sys = []
 #		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
 		for act_sys in gen_dial['act_sys']:
-			turn_domain = decideTurnDomain('', act_sys, domain_prev)
+			turn_domain = decide_turn_domain('', act_sys, domain_prev)
 			domain_history_sys.append(turn_domain)
 			domain_prev = turn_domain
 
@@ -713,7 +713,7 @@ class CorpusTraining(nn.Module):
 		domain_prev = 'none'
 		domain_history = []
 		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
-			turn_domain = decideTurnDomain(act_usr, act_sys, domain_prev)
+			turn_domain = decide_turn_domain(act_usr, act_sys, domain_prev)
 			domain_history.append(turn_domain)
 			domain_prev = turn_domain
 			if turn_domain == 'none': # should not enter

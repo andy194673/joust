@@ -1,6 +1,3 @@
-import json
-import sys
-
 def checkActSlotInTurn(act_seq, act, domain, slot):
 	'''
 	decide if a slot with act exists in a act_seq
@@ -53,7 +50,7 @@ def getSlotWithActInTurn(act_seq, act):
 	return slots
 
 
-def decideTurnDomain(usr_act, sys_act, domain_prev):
+def decide_turn_domain(usr_act, sys_act, domain_prev):
 	'''
 	decide turn-level domain by the majority of domain slot in (generated) usr_act and sys_act
 	if cannot decide, follow the domain in previous turn
@@ -130,93 +127,3 @@ def formKeySlot():
 	keySlot['restaurant']['book'] = ['day', 'people', 'time']
 	keySlot['hotel']['book'] = ['day', 'people', 'stay']
 	return keySlot
-	
-
-if __name__ == '__main__':
-	'''
-	check if book/reqt is required in goal for a domain, then specific book/reqt slot exist in generated dialogue
-	the exist of these slots will be used to decide the boundary of dialogue flow
-	'''
-	data = json.load(open('data/MultiWOZ/data.json'))
-	print('done loading')
-	
-#	n_reqt, n_reqt_match = 0, 0
-#	n_book, n_book_match = 0, 0
-	domain_list = ['restaurant', 'hotel', 'attraction', 'train', 'taxi']
-	count = { domain: {'reqt': {'total': set(), 'match': set()}, 'book': {'total': set(), 'match': set()}} for domain in domain_list}
-
-	# form key slot
-	keySlot = {domain: {} for domain in domain_list}
-	keySlot['restaurant']['reqt'] = ['address', 'phone', 'postcode']
-	keySlot['hotel']['reqt'] = ['address', 'phone', 'postcode']
-	keySlot['attraction']['reqt'] = ['address', 'phone', 'postcode', 'fee']
-#	keySlot['train']['reqt'] = ['duration', 'trainID', 'price']
-	keySlot['train']['reqt'] = ['duration', 'price']
-	keySlot['taxi']['reqt'] = ['type', 'phone']
-
-	keySlot['restaurant']['book'] = ['day', 'people', 'time']
-	keySlot['hotel']['book'] = ['day', 'people', 'stay']
-	keySlot['train']['book'] = ['people']
-
-	gen_dial_all = json.load(open('sample/act_rl/pretrain-10-train.json'))
-#	gen_dial_all = json.load(open('sample/act_rl/pretrain-10-test.json'))
-	for dial_idx, (dial_name, gen_dial) in enumerate(gen_dial_all['Epoch-rl'].items()):
-		print(dial_idx, dial_name)
-#		goal = data[dial_name]['goal'][domain]
-
-		for domain in domain_list:
-			if 'reqt' in data[dial_name]['goal'][domain]:
-				count[domain]['reqt']['total'].add(dial_name)
-			if 'book' in data[dial_name]['goal'][domain]:
-				count[domain]['book']['total'].add(dial_name)
-
-		# collect turns
-		domain_nameProvided = set(['taxi', 'police', 'hospital', 'general'])
-		act = {'usr': [], 'sys': []}
-		for turn_idx in range(100):
-			side = 'usr' if turn_idx % 2 == 0 else 'sys'
-			turn_idx = '0'+str(turn_idx) if turn_idx < 10 else str(turn_idx)
-			key = '{}-{}(gen)'.format(turn_idx, side)
-			if key not in gen_dial:
-				break
-			utt = gen_dial[key]
-#			print(utt)
-			act[side].append(utt)
-
-			if side == 'sys' and ('_name' in utt or '_trainID' in utt):
-				for token in utt.split():
-					if '_name' in token or '_trainID' in token:
-						domain = token.split('_')[0]
-						domain_nameProvided.add(domain)
-		assert len(act['usr']) == len(act['sys'])
-
-		# decide domain for each turn
-		domain_prev = 'none'
-		domain_history = []
-		for side_idx, (act_usr, act_sys) in enumerate(zip(act['usr'], act['sys'])):
-			_domain = decideTurnDomain(act_usr, act_sys, domain_prev)
-#			if side_idx == 0 and _domain == 'none':
-#				print('Idx: {}, domain: {}, {} -> {}'.format(side_idx, _domain, act_usr, act_sys))
-#				input('press...')
-			domain_history.append(_domain)
-			domain_prev = _domain
-#			print('Idx: {}, domain: {}, {} -> {}'.format(side_idx, _domain, act_usr, act_sys))
-#		input('press...')
-#		continue
-
-		# check if simulated dialogues foll
-		for side_idx, (act_usr, act_sys, turn_domain) in enumerate(zip(act['usr'], act['sys'], domain_history)):
-			turn_stage = checkTurnStage(act_usr, act_sys, turn_domain, keySlot) # info/book/reqt/none
-			if turn_stage in ['book', 'reqt']:
-				count[turn_domain][turn_stage]['match'].add(dial_name)
-			if turn_domain in domain_nameProvided:
-				continue
-			print('Idx: {}, domain: {}, stage: {}, {} -> {}'.format(side_idx, turn_domain, turn_stage, act_usr, act_sys))
-			input('press...')
-	
-
-	for domain in domain_list:
-		for slotType in ['reqt', 'book']:
-			match = len(count[domain][slotType]['match'] & count[domain][slotType]['total'])
-			total = len(count[domain][slotType]['total'])
-			print('{}: {} => {} / {}'.format(domain, slotType, match, total))

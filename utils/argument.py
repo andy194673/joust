@@ -194,7 +194,6 @@ def get_config():
                         help='whether to attend over belief state at previous turn.')
 
 
-
     parser.add_argument('--reward_type', type=str, default='turn_reward')
 
     # fine tune method

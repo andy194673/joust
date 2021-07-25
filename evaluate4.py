@@ -2,7 +2,7 @@ import math, logging, copy, json
 from collections import Counter, OrderedDict
 from nltk.util import ngrams
 from data_preprocess.db_ops import MultiWozDB
-from utils.checkInfoTurn4 import getSlotWithActInTurn, decideTurnDomain
+from utils.check_turn_info import getSlotWithActInTurn, decide_turn_domain
 from utils.util_dst import dict2list
 import numpy as np
 
@@ -187,7 +187,7 @@ class MultiWozEvaluator(object):
 			domain_prev = 'none'
 			record[dial_name] = set()
 			for side_idx, (act_usr, act_sys) in enumerate(zip(dial['usr'][src], dial['sys'][src])):
-				turn_domain = decideTurnDomain(act_usr, act_sys, domain_prev)
+				turn_domain = decide_turn_domain(act_usr, act_sys, domain_prev)
 				reqt_slots = getSlotWithActInTurn(act_usr, 'request')
 #				reqt_slot_count['total'] += len(reqt_slots) # all requsted slots by usr
 				for reqt_slot in reqt_slots:

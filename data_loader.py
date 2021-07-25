@@ -1,15 +1,13 @@
 import sys
 import json
-import copy
 import random
 import torch
 
-from utils.checkNameOfferDST import evaluate_domainBS_scanBS
 from utils.util_dst import iter_dst_file, dict2list
-from utils.checkInfoTurn4 import decideTurnDomain
+from utils.check_turn_info import decide_turn_domain
 
 
-class DataLoader:
+class DataLoader():
 	def __init__(self, config, load_src=False):
 		self.load_src = load_src
 		self.config = config
@@ -394,7 +392,7 @@ class DataLoader:
 
 				# recover turn_domain to replace booking token in act seq
 				usr_act, sys_act = dial['usr_act'][i], dial['sys_act'][i]
-				turn_domain = decideTurnDomain(usr_act, sys_act, domain_prev)
+				turn_domain = decide_turn_domain(usr_act, sys_act, domain_prev)
 				if 'booking' in usr_act and turn_domain in ['restaurant', 'hotel', 'train']:
 					usr_act = usr_act.replace('booking', turn_domain)
 				if 'booking' in sys_act and turn_domain in ['restaurant', 'hotel', 'train']:
@@ -543,7 +541,7 @@ class DataLoader:
 					domain_goal = goal[domain]
 
 					# check if sys provided entity and dst is correct
-					if domain_name in sys_word_prev and evaluate_domainBS_scanBS(domain_bs, domain_goal, domain) == 1:
+					if domain_name in sys_word_prev and self.evaluate_domainBS_scanBS(domain_bs, domain_goal, domain) == 1:
 						new_goal_vec[idx] = 0
 ##						print('\tturn off by info finish ->', token)
 
@@ -693,3 +691,19 @@ class DataLoader:
 								remove_dontcare=self.config.remove_dontcare, fix_wrong_domain=self.config.fix_wrong_domain)
 		self.dst_data = dst_cont
 		print('# of dialogues in dst data:', len(self.dst_data))
+
+
+	def evaluate_domainBS_scanBS(self, domain_bs, domain_goal, domain):
+		'''Check if detected info in the given bs is correct according to the goal (check only informable slot)'''
+		for slot, value in domain_bs['semi'].items():
+			if value in ['dont care', "don't care", 'dontcare', "do n't care"]:
+				continue
+			if slot not in domain_goal['info']:  # might have 'not_mentioned' slot in bs but not in goal
+				continue
+			if domain_goal['info'][slot] in ['dont care', "don't care", 'dontcare', "do n't care"]:
+				continue
+			if slot == 'type' and domain == 'hotel':
+				continue
+			if value != domain_goal['info'][slot]:
+				return 0
+		return 1
