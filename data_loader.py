@@ -9,7 +9,7 @@ from utils.util_dst import iter_dst_file, dict2list
 from utils.checkInfoTurn4 import decideTurnDomain
 
 
-class DataLoader:
+class DataLoader())():
 	def __init__(self, config, load_src=False):
 		self.load_src = load_src
 		self.config = config
