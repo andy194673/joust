@@ -6,7 +6,7 @@ import torch
 from utils.util_dst import iter_dst_file, dict2list
 from utils.check_turn_info import decide_turn_domain
 
-# test git
+# test git2
 
 class DataLoader():
 	def __init__(self, config, load_src=False):
