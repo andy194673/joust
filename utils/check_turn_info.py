@@ -1,4 +1,4 @@
-def checkActSlotInTurn(act_seq, act, domain, slot):
+def check_turn_act(act_seq, act, domain, slot):
 	'''
 	decide if a slot with act exists in a act_seq
 	e.g., slot=hotel_people, act=inform exists in act_seq='act_inform hotel_people act_reqt hotel_stars'
@@ -28,10 +28,8 @@ def checkActSlotInTurn(act_seq, act, domain, slot):
 		return True
 
 
-def getSlotWithActInTurn(act_seq, act):
-	'''
-	return slots that are with specified act if exist
-	'''
+def get_turn_act_slot(act_seq, act):
+	'''return slots that are with specified act if exist'''
 	slots = []
 	act = 'act_{}'.format(act)
 	if act not in act_seq:
@@ -87,9 +85,9 @@ def decide_turn_domain(usr_act, sys_act, domain_prev):
 		return domain
 
 
-def checkTurnStage(act_usr, act_sys, turn_domain, keySlot):
+def check_turn_type(act_usr, act_sys, turn_domain, keySlot):
 	'''
-	decide turn stage within a domain, either info, book, reqt or none (for general domain)
+	decide turn type within a domain, either info, book, reqt or none (for general domain)
 	check by some rules:
 		book: if usr informs any booking slot or if sys reqt any booking slot
 		reqt: if usr reqt any reqt slot or if sys inform any reqt slot
@@ -101,29 +99,27 @@ def checkTurnStage(act_usr, act_sys, turn_domain, keySlot):
 	if 'book' in keySlot[turn_domain]: # some domains have no booking stage
 		for slot in keySlot[turn_domain]['book']:
 #			if checkActSlotInTurn(act_usr, 'inform', turn_domain, slot) or checkActSlotInTurn(act_sys, 'request', turn_domain, slot):
-			if checkActSlotInTurn(act_usr, 'inform', turn_domain, slot) or 'act_offerbooked' in act_sys:
+			if check_turn_act(act_usr, 'inform', turn_domain, slot) or 'act_offerbooked' in act_sys:
 				return 'book'
 
 	# check reqt
 	for slot in keySlot[turn_domain]['reqt']:
-		if checkActSlotInTurn(act_usr, 'request', turn_domain, slot) or checkActSlotInTurn(act_sys, 'inform', turn_domain, slot):
+		if check_turn_act(act_usr, 'request', turn_domain, slot) or check_turn_act(act_sys, 'inform', turn_domain, slot):
 			return 'reqt'
 
 	# else
 	return 'info'
 
 
-def formKeySlot():
-	# form key slot, this will be used to decide a turn at which stage (info/book/reqt)
+def form_key_slot():
+	# form key slot, this is used to decide a turn at which stage (info/book/reqt)
 	domain_list = ['restaurant', 'hotel', 'attraction', 'train', 'taxi']
 	keySlot = {domain: {} for domain in domain_list}
 	keySlot['restaurant']['reqt'] = ['address', 'phone', 'postcode']
 	keySlot['hotel']['reqt'] = ['address', 'phone', 'postcode']
 	keySlot['attraction']['reqt'] = ['address', 'phone', 'postcode', 'fee']
-#	keySlot['train']['reqt'] = ['duration', 'trainID', 'price']
 	keySlot['train']['reqt'] = ['duration', 'price']
 	keySlot['taxi']['reqt'] = ['type', 'phone']
-
 	keySlot['restaurant']['book'] = ['day', 'people', 'time']
 	keySlot['hotel']['book'] = ['day', 'people', 'stay']
 	return keySlot

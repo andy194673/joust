@@ -100,7 +100,7 @@ def get_config():
     # parser.add_argument('--full_usr_act_result', type=str, default='')
     parser.add_argument('--print_sample', type=int, default=1000, help='the number of printed dialogues')
 
-    # model hyper-parameter
+    # networks hyper-parameter
     parser.add_argument('--load_epoch', type=str, default='best')
     parser.add_argument('--train_size', type=int, default=10000, help='max number of train dialogues used')
     parser.add_argument('--vocab_size', type=int, default=1000, help='top frequent words as vocab')

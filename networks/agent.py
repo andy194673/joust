@@ -1,7 +1,7 @@
 import torch.nn as nn
-from nn.encoder import SentEncoder, RNN
-from nn.decoder import Decoder
-from nn.dst import DST
+from networks.encoder import SentEncoder, RNN
+from networks.decoder import Decoder
+from networks.dst import DST
 
 class Agent(nn.Module):
 	'''Class of user simulator (usr) / dialogue system (sys)'''

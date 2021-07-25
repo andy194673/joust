@@ -1,8 +1,8 @@
 from utils.argument import get_config
 from data_loader import DataLoader
+from networks.model import Model
 
-#from nn.sl4 import CorpusTraining
-from nn.sl4_2 import CorpusTraining # including succ reward
+
 from evaluate import MultiWozEvaluator
 import time
 import torch
@@ -13,7 +13,7 @@ import random
 from tqdm import tqdm
 import numpy as np
 from utils.util_dst import dict2list
-from nn.dst import DST
+from networks.dst import DST
 
 
 def write_sample(decode_all, src, epoch_idx, sample_file, record, reqt_record, res, reward):
@@ -322,10 +322,10 @@ def collect_dial_interact(decode_all, decode_batch, side, batch):
 
 
 def compute_fisher_matric(config, dataset):
-	model = CorpusTraining(config, dataset)
+	model = Model(config, dataset)
 	model = model.cuda()
 
-	print('Load model in computing fisher')
+	print('Load networks in computing fisher')
 	model.loadModel(config.model_dir, config.load_epoch)
 
 	print('Computing Fisher Matrix')
@@ -354,7 +354,7 @@ def compute_fisher_matric(config, dataset):
 			decode_batch = model(batch, turn_idx=turn_idx, mode='teacher_force')
 			loss, update_loss = model.get_loss(batch)
 			update_loss.backward(retain_graph=True)
-#			grad_norm = nn.utils.clip_grad_norm_(self.parameters(), self.config.grad_clip)
+#			grad_norm = networks.utils.clip_grad_norm_(self.parameters(), self.config.grad_clip)
 
 			for n, p in model.named_parameters():
 				if p.grad is not None:
@@ -381,7 +381,7 @@ def trainIter(config, dataset, CT):
 
 	# test before finetune or rl
 	if config.mode in ['finetune', 'rl']:
-		print('Load model')
+		print('Load networks')
 		CT.loadModel(config.model_dir, config.load_epoch)
 		if config.mode == 'finetune' and config.ft_method == 'ewc':
 			CT.fisher = fisher
@@ -438,12 +438,12 @@ def trainIter(config, dataset, CT):
 			# 	test_with_usr_simulator(config, dataset, full_CT, 'valid', tag='full_usr')
 
 #			score = score_auto + score_usr
-			if config.mode == 'rl': # pick best model based on automatic evaluation on dev during interaction
+			if config.mode == 'rl': # pick best networks based on automatic evaluation on dev during interaction
 				score = score_auto
-			else: # pretrain, finetune, pick best model based on interaction result during supervised learning
+			else: # pretrain, finetune, pick best networks based on interaction result during supervised learning
 				score = score_usr
 
-		# save model
+		# save networks
 		if score > best_score:
 			# TEST
 			dataset.init()
@@ -526,7 +526,7 @@ def runRLOneEpoch(epoch_idx):
 			max_act_len_batch = CT.check_max_gen_act_seq(gen_dial_batch)
 
 			if config.reward_type == 'turn_reward':
-				avg_sys_r, avg_usr_r = CT.get_reward(gen_dial_batch)
+				avg_sys_r, avg_usr_r = CT.get_turn_reward(gen_dial_batch)
 			else:
 				avg_sys_r, avg_usr_r = CT.get_success_reward(gen_dial_batch, evaluator)
 
@@ -720,7 +720,7 @@ if __name__ == '__main__':
 	evaluator = MultiWozEvaluator(dataset, config)
 
 	# construct models in corpus training
-	CT = CorpusTraining(config, dataset)
+	CT = Model(config, dataset)
 	CT = CT.cuda()
 	
 	# start training / testing

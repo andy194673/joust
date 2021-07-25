@@ -1,13 +1,12 @@
 import os
-import sys
 import torch
 import torch.nn as nn
-from nn.encoder import SentEncoder, RNN
-from nn.decoder import Decoder
+from networks.encoder import SentEncoder
+from networks.decoder import Decoder
 from utils.criterion import NLLEntropyValid
-from utils.util_dst import dict2list
 
 class DST(nn.Module):
+	'''DST networks'''
 	def __init__(self, config, dataset):
 		super(DST, self).__init__()
 		self.config = config
@@ -31,12 +30,10 @@ class DST(nn.Module):
 
 		if config.value_mask:
 			self.build_value_mask()
-
 		self.set_optimizer()
 
 
 	def build_value_mask(self):
-		print('build value mask', file=sys.stderr)
 		self.mask = {}
 		value_len = len(self.dataset.value_vocab['all'])
 		for slot in self.dataset.slot_vocab:
@@ -114,26 +111,16 @@ class DST(nn.Module):
 			self.logits['slot'] = slot_out['logits']
 			self.logits['value'] = value_logits
 			return None, None
-#			return None, None, None, None
 
 		if mode == 'gen':
-#			slot_token = [slot_str.split() for slot_str in slot_out['decode']] # convert a list of str into a list of list, no <eos>
 			slot_len = slot_out['decode_len'].tolist() # w/i <eos>
-#			value_token = self.logits2token(value_logits, slot_len, mode)
 			value_token, value_logprobs = self.logits2token(value_logits, slot_len, mode)
 			nlu_pred = self.update_bs(slot_token, value_token, slot_len)
 			return self.bs_pred, nlu_pred # both are a list of dict
 
-#			logprobs = {'slot': slot_out['logprobs'], 'value': value_logprobs} # (B, T=max_slot_dec_len)
-#			tokens = {'slot': slot_token, 'value': value_token} # a list (len=B) of list with decoded slot/value tokens (no <eos>)
-#			return self.bs_pred, nlu_pred, logprobs, tokens
-
-
 
 	def init_bs_pred(self, batch_size):
-		'''
-		bs_pred: a list (len=B) of bs dict such as {'hotel-area': 'north', 'hotel-internet': 'yes'}
-		'''
+		'''bs_pred: a list (len=B) of bs dict such as {'hotel-area': 'north', 'hotel-internet': 'yes'}'''
 		self.bs_pred = [ {} for _ in range(batch_size) ]
 
 
@@ -143,7 +130,6 @@ class DST(nn.Module):
 			nlu_dict = {}
 			slot_list = slot_token[b_idx]
 			value_list = value_token[b_idx]
-#			print('In batch:{}, # of slot: {}, value: {}, should be: {}'.format(b_idx, len(slot_list), len(value_list), slot_len[b_idx]-1), file=sys.stderr)
 			assert len(slot_list) == len(value_list) == (slot_len[b_idx]-1)
 			for slot, value in zip(slot_list, value_list):
 				if value in ['<PAD>', '<SOS>', '<EOS>', '<UNK>']: # remove invalid value prediction:
@@ -178,21 +164,13 @@ class DST(nn.Module):
 			logprobs[:, t] = torch.log(value)
 
 			for b_idx, (sentence, i) in enumerate(zip(sentences, idx)):
-#				if len(sentence) > 0 and sentence[-1] == '<EOS>':
-#					continue
 				if t < (slot_len[b_idx]-1):
-#					sentence.append(self.dataset.idx2value[i.item()])
 					sentence.append(self.dataset.idx2value['all'][i.item()])
-#		# remove eos
-#		for b, sent in enumerate(sentences):
-##			assert sent[-1] == '<EOS>'
-#			sentences[b] = sent[:-1]
-#		return sentences
+
 		for b_idx, sent_len in enumerate(slot_len):
 			logprobs[b_idx, sent_len:] = 0
 		return sentences, logprobs
 		
-			
 
 	def len2mask(self, length):
 		'''
@@ -204,7 +182,6 @@ class DST(nn.Module):
 		'''
 		max_len = torch.max(length).item()
 		B = length.size()[0]
-#		print('B:', B, self.batch_size, file=sys.stderr)
 		assert B == self.batch_size
 		mask = torch.ones(B, max_len)
 		for i, l in enumerate(length):
@@ -225,7 +202,6 @@ class DST(nn.Module):
 
 	def update(self, update_loss, train_mode):
 		update_loss.backward()
-#		update_loss.backward(retain_graph=True)
 		grad_norm = nn.utils.clip_grad_norm_(self.parameters(), self.config.grad_clip)
 		self.optimizer.step()
 		self.optimizer.zero_grad()
@@ -239,12 +215,9 @@ class DST(nn.Module):
 	def saveModel(self, epoch):
 		if not os.path.exists(self.config.model_dir):
 			os.makedirs(self.config.model_dir)
-#		torch.save(self.state_dict(), self.config.model_dir + '/epoch-{}.pt'.format(str(epoch)))
 		torch.save(self.state_dict(), self.config.model_dir + '/epoch-{}.pt'.format('best'))
 
 
 	def loadModel(self, model_dir, epoch):
-#		model_name = self.config.model_dir + '/epoch-{}.pt'.format(str(epoch))
 		model_name = model_dir + '/epoch-{}.pt'.format(str(epoch))
 		self.load_state_dict(torch.load(model_name))
-

@@ -5,9 +5,9 @@ batch_size=100; dim=150
 oracle_dst=false; prev_bs=true
 #oracle_dst=true; prev_bs=false # use this for oracle dst setup
 
-###### train SL model #######
+###### train SL networks #######
 #model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/pretrain/1704'
-# best rl model
+# best rl networks
 model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5430' # provide this one
 #model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5457'
 
@@ -20,7 +20,7 @@ model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5430' # provide this
 #				       --epoch=30 --no_improve_epoch=10 > $log
 #exit
 
-######## test SL model #######
+######## test SL networks #######
 # results of corpus interaction
 corpus_word='result/pretrain/word/'$model_name'.json'
 corpus_act='result/pretrain/act/'$model_name'.json'

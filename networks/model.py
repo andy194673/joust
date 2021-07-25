@@ -1,22 +1,20 @@
-import sys
-import os
+import os, sys
 import copy
-import random
 import numpy as np
 import torch
 import torch.nn as nn
-from nn.agent import Agent
-#from utils.util import remove_pad_sent, pad_sent
-from utils.check_turn_info import decide_turn_domain, checkTurnStage, formKeySlot, getSlotWithActInTurn
-#from utils.checkInfoTurn import decideTurnDomain, checkTurnStage, formKeySlot, getSlotWithActInTurn
-from utils.criterion import NLLEntropyValid
-from nn.encoder import RNN
-from data_preprocess.create_delex_data import get_summary_bstate, addDBPointer
-from utils.util_dst import dict2list
 
-class CorpusTraining(nn.Module):
+from networks.agent import Agent
+from networks.encoder import RNN
+from utils.check_turn_info import decide_turn_domain, check_turn_type, form_key_slot, get_turn_act_slot
+from utils.criterion import NLLEntropyValid
+from utils.util_dst import dict2list
+from data_preprocess.create_delex_data import get_summary_bstate, addDBPointer
+
+
+class Model(nn.Module):
 	def __init__(self, config, dataset):
-		super(CorpusTraining, self).__init__()
+		super(Model, self).__init__()
 		self.config = config
 		self.dataset = dataset
 
@@ -27,13 +25,14 @@ class CorpusTraining(nn.Module):
 			self.dial_rnn = RNN(config.hidden_size, config.hidden_size, dropout=config.dropout, bidirectional=False)
 
 		self.set_optimizer()
-		self.keySlot = formKeySlot()
+		self.keySlot = form_key_slot()
 
-		self.all_rewards = []
+		self.all_rewards = [] # reward container
 
 
 	def forward(self, batch, turn_idx=None, mode='teacher_force', beam_search=False):
-		# unpack batch, usr 
+		'''Both agents takes utterances from corpus and perform one generation, used for supervised learning'''
+		# unpack data, usr
 		ctx_usr = batch['word_idx']['ctx_usr'] # sys output at previous turn, (total_turn, sent_len)
 		out_usr = batch['word_idx']['out_usr'] # (total_turn, sent_len)
 		act_usr = batch['act_idx']['usr'] # act for current turn, (total_turn, act_len)
@@ -44,7 +43,7 @@ class CorpusTraining(nn.Module):
 		prev_act_usr_len = batch['sent_len']['prev_act_usr'] # (total_turn, )
 		gs = batch['gs'] # (total_turn, goal size)
 
-		# sys
+		# unpack data, sys
 		ctx_sys = batch['word_idx']['ctx_sys'] # usr ouput at current turn
 		out_sys = batch['word_idx']['out_sys']
 		act_sys = batch['act_idx']['sys']
@@ -55,47 +54,41 @@ class CorpusTraining(nn.Module):
 		prev_act_sys_len = batch['sent_len']['prev_act_sys'] # (total_turn, )
 		bs = batch['bs'] # belief state summary, a vector
 		db = batch['db']
-#		dial_len = batch['dial_len'] # (num_dial, )
 
 		# init dial rnn
 		init_dial_rnn = batch['init_dial_rnn'] # tuple of (L, B, dir*H)
-
 		self.batch_size = ctx_usr.size(0) # == total_turn
-#		self.num_dial = dial_len.size(0)
-#		self.num_turn = torch.max(dial_len).item() # number of (max) turns within the selected dialogues in this batch
-
-		# additional info
 		add_usr = gs # goal state for usr
 
-		# return
-		self.logits = {}
-		decode = {}
+		# returns
+		self.logits, decode = dict(), dict()
 
 		# encode input utterance
 		# ctx_out: (B, sent_len, dir*H/2) & ctx_emb: (layer, B, dir*H/2)
 		ctx_out_usr, (ctx_emb_usr, _) = self.usr.encode_ctx(ctx_usr, ctx_usr_len)
 		ctx_out_sys, (ctx_emb_sys, _) = self.sys.encode_ctx(ctx_sys, ctx_sys_len)
 
-		if not self.config.oracle_dst: # run dst forward
-#			raise NotImplementedError
+		# run dst networks if not using oracle belief state
+		if not self.config.oracle_dst:
 			bs_pred, nlu_pred = self.sys.dst(batch, turn_idx=turn_idx, mode=mode) # list (len=B) of dict {domain-slot: value}
 
-		if not self.config.oracle_dst and mode == 'gen': # use dst prediction during inference to query db
+		# use dst prediction to query db in inference
+		if not self.config.oracle_dst and mode == 'gen':
 			full_bs_batch = self.bs_pred2metadata(bs_pred)
 			bs = torch.tensor([get_summary_bstate(x) for x in full_bs_batch]).float().cuda()
 			db = torch.tensor([addDBPointer({'metadata': x}) for x in full_bs_batch]).float().cuda()
 			add_sys = torch.cat([bs, db], dim=1) # additional info for sys
 			decode['full_bs'] = full_bs_batch
-
-		else: # use groundtruth bs, db
+		# use groundtruth bs, db in training
+		else:
 			add_sys = torch.cat([bs, db], dim=1) # additional info for sys
 			decode['full_bs'] = batch['full_bs']
 
-		# encoding prev act
+		# encoding previous act
 		prev_act_out_usr, _ = self.usr.encode_prev_act(prev_act_usr, prev_act_usr_len)
 		prev_act_out_sys, _ = self.sys.encode_prev_act(prev_act_sys, prev_act_sys_len)
 
-		# dial rnn
+		# dialogue-level rnn encoder
 		if turn_idx == 0:
 			if self.config.share_dial_rnn: assert init_dial_rnn == None
 			if not self.config.share_dial_rnn: assert init_dial_rnn['usr'] == None and init_dial_rnn['sys'] == None
@@ -104,35 +97,26 @@ class CorpusTraining(nn.Module):
 			if not self.config.share_dial_rnn: assert init_dial_rnn['usr'] != None and init_dial_rnn['sys'] != None
 		dial_len = torch.ones(self.batch_size).long().cuda()
 
-		# run 1 step on usr ctx
+		# run one step on usr ctx
 		ctx_emb_usr = ctx_emb_usr.permute(1,0,2)
 		if self.config.share_dial_rnn:
 			dial_emb_usr, init_dial_rnn = self.dial_rnn(ctx_emb_usr, dial_len, init_state=init_dial_rnn)
 		else: # run both dial rnn same input
 			dial_emb_usr, init_dial_rnn['usr'] = self.usr.dial_rnn(ctx_emb_usr, dial_len, init_state=init_dial_rnn['usr'])
 			_, 			  init_dial_rnn['sys'] = self.sys.dial_rnn(ctx_emb_usr, dial_len, init_state=init_dial_rnn['sys'])
-		# SOTA
-		init_usr = (dial_emb_usr.permute(1,0,2), dial_emb_usr.permute(1,0,2)) # TODO: try just use init_dial_rnn here?
-#		dial_emb_usr = dial_emb_usr.permute(1,0,2) # (1, B, H)
-#		dial_with_add_usr = torch.cat([dial_emb_usr, add_usr.unsqueeze(0)], dim=2) # (1, B, H+feat)
-#		init_usr = (dial_with_add_usr, dial_with_add_usr)
+		init_usr = (dial_emb_usr.permute(1,0,2), dial_emb_usr.permute(1,0,2))
 
-		# run 1 step on sys ctx
+		# run one step on sys ctx
 		ctx_emb_sys = ctx_emb_sys.permute(1,0,2)
 		if self.config.share_dial_rnn:
 			dial_emb_sys, init_dial_rnn = self.dial_rnn(ctx_emb_sys, dial_len, init_state=init_dial_rnn)
 		else: # use sys dial rnn
 			_, 			  init_dial_rnn['usr'] = self.usr.dial_rnn(ctx_emb_sys, dial_len, init_state=init_dial_rnn['usr'])
 			dial_emb_sys, init_dial_rnn['sys'] = self.sys.dial_rnn(ctx_emb_sys, dial_len, init_state=init_dial_rnn['sys'])
-		# SOTA
-		init_sys = (dial_emb_sys.permute(1,0,2), dial_emb_sys.permute(1,0,2)) # TODO: try just use init_dial_rnn here?
-#		dial_emb_sys = dial_emb_sys.permute(1,0,2) # (1, B, H)
-#		dial_with_add_sys = torch.cat([dial_emb_sys, add_sys.unsqueeze(0)], dim=2) # (1, B, H+feat)
-#		init_sys = (dial_with_add_sys, dial_with_add_sys)
+		init_sys = (dial_emb_sys.permute(1,0,2), dial_emb_sys.permute(1,0,2))
 
-		decode['init_dial_rnn'] = init_dial_rnn # record it for next step
-#		init_usr = (ctx_emb_usr, ctx_emb_usr) # TODO: can be differnt init for policy and generator
-#		init_sys = (ctx_emb_sys, ctx_emb_sys)
+		# record dialogue-level encoder state for next step
+		decode['init_dial_rnn'] = init_dial_rnn
 
 		# usr policy
 		pol_mode = mode
@@ -147,7 +131,6 @@ class CorpusTraining(nn.Module):
 
 		# sys policy
 		pol_mode = mode
- 		# TODO: add no use case
 		if mode == 'gen' and self.config.sys_act_type == 'oracle': pol_mode = 'teacher_force' # decide oracle act on sys or not
 		enc_out_sys = {'ctx': ctx_out_sys, 'prev_act': prev_act_out_sys}
 		enc_mask_sys = {'ctx': self.len2mask(ctx_sys_len), 'prev_act': self.len2mask(prev_act_sys_len)}
@@ -172,6 +155,7 @@ class CorpusTraining(nn.Module):
 			decode['nlu_pred'] = nlu_pred
 		return decode
 
+
 	def len2mask(self, length):
 		'''
 		convert length tensor to mask tensor for further attention use
@@ -182,18 +166,15 @@ class CorpusTraining(nn.Module):
 		'''
 		max_len = torch.max(length).item()
 		B = length.size()[0]
-#		print('B:', B, self.batch_size, file=sys.stderr)
 		assert B == self.batch_size
 		mask = torch.ones(B, max_len)
 		for i, l in enumerate(length):
 			mask[i, l:] = float('-inf')
 		return mask.cuda()
 
+
 	def bs_pred2metadata(self, bs_pred):
-		'''
-		convert the prediction by dst model into metadata format for db query
-		'''
-#		print('bs:', len(bs_pred), self.batch_size, file=sys.stderr)
+		'''Convert the prediction by dst networks into metadata format for db query'''
 		assert len(bs_pred) == self.batch_size
 		full_bs_batch = [self.init_empty_fullBS() for _ in range(self.batch_size)]
 		for bs_dict, full_bs in zip(bs_pred, full_bs_batch):
@@ -209,16 +190,6 @@ class CorpusTraining(nn.Module):
 					sys.exit(1)
 		return full_bs_batch
 
-#	def interleave(self, utt_emb_usr, utt_emb_sys, dial_len):
-#		'''
-#		interleave utterance embedding from both sides for modelling dialogue flow by dialogue rnn
-#		'''
-#		assert utt_emb_usr.size() == utt_emb_sys.size()
-#		utt_emb_usr = pad_sent(utt_emb_usr, dial_len) # (num_dial, num_turn, H)
-#		utt_emb_sys = pad_sent(utt_emb_sys, dial_len)
-#		utt_emb_both = torch.cat([utt_emb_usr, utt_emb_sys], dim=2).view(self.num_dial, self.num_turn*2, self.config.hidden_size)
-#		return utt_emb_both
-
 
 	def init_empty_fullBS(self):
 		full_bs = copy.deepcopy(self.dataset.all_data['MUL0001.json']['log'][1]['metadata'])
@@ -230,41 +201,30 @@ class CorpusTraining(nn.Module):
 
 
 	def interact(self, beam_search=False, dial_name_batch=None):
-		'''
-		Args:
-			dial_name_batch: a list of dial name. If given, then the corresponding goals will be used for interaction
-		'''
-#		self.rl_batch_size = 3
-#		self.batch_size = self.config.rl_batch_size
-#		if dial_name_batch is not None:
-#			assert len(dial_name_batch) == self.batch_size
+		'''Interact method: two agents interact to generate dialogues given the user goals'''
 		self.batch_size = len(dial_name_batch)
 
 		# init necessary info
-#		s = [ self.vocab['hi'], self.vocab['<EOS>'] ]
 		ctx_word = ['hi' for _ in range(self.batch_size)] # will pad with eos in the word2tensor function
 		goal_batch = self.goal_sampler(dial_name_batch)
 		goal_vec_batch = [self.dataset.getGoalVector(goal) for goal in goal_batch]
-		
-#		if self.config.oracle_dst: # TODO: record full_bs all the time, instead of only maintaining the lastest one
 		full_bs_batch = [self.init_empty_fullBS() for _ in range(self.batch_size)]
 
 		# dst input material
 		lex_dial_history = ['' for _ in range(self.batch_size)]
-		bs_pred = [{} for _ in range(self.batch_size)]
+		bs_pred = [dict() for _ in range(self.batch_size)]
 
 		# start interact between pretrained user and system
 		# generate one turn per loop, alternate between user and system
 		turn_idx = 0
 		extra_slot = [0 for _ in range(self.batch_size)] # tell us how much redundant slots that simulated usr said
 		# NOTE: n_side_when_done means dialogue ends with this number of turns on one side, -1 means dialogue is not done yet
-#		gen_dial_batch = [{'bs': [], 'word_usr': [], 'word_sys': [], 'act_usr': [], 'act_sys': [], 'n_side_when_done': -1, \
-#							'act_sys_logprob': [], 'act_sys_len': []} for _ in range(self.batch_size)]
-		gen_dial_batch = [{'bs': [], 'word_usr': [], 'word_sys': [], 'act_usr': [], 'act_sys': [], 'n_side_when_done': -1, \
-							'lex_word_usr': [], 'lex_word_sys': [], 'bs_pred': [], \
-							'goal_vec': [], 'bs_vec': [], \
-							'act_usr_logprob': [], 'act_usr_len': [], \
-							'act_sys_logprob': [], 'act_sys_len': []} for _ in range(self.batch_size)]
+
+		gen_dial_batch = [{'bs': [], 'word_usr': [], 'word_sys': [], 'act_usr': [], 'act_sys': [], 'n_side_when_done': -1,
+						   'lex_word_usr': [], 'lex_word_sys': [], 'bs_pred': [],
+						   'goal_vec': [], 'bs_vec': [],
+						   'act_usr_logprob': [], 'act_usr_len': [],
+						   'act_sys_logprob': [], 'act_sys_len': []} for _ in range(self.batch_size)]
 		booked_domain_batch = [set() for _ in range(self.batch_size)]
 
 		if self.config.share_dial_rnn:
@@ -277,7 +237,6 @@ class CorpusTraining(nn.Module):
 			gen_dial['goal'] = goal
 			gen_dial['dial_name'] = dial_name
 
-		# TODO: count the slots in goal that usr did not say after interaction ********************
 		while True:
 			ctx, ctx_len = self.word2tensor(ctx_word, self.dataset.vocab) # ctx: (B=num_dial, T), ctx_len: (B=num_dial, )
 
@@ -291,12 +250,6 @@ class CorpusTraining(nn.Module):
 				# collect goal state vec
 				for gen_dial, goal_vec in zip(gen_dial_batch, goal_vec_batch):
 					gen_dial['goal_vec'].append(goal_vec)
-
-#				# trace goal state change on usr side
-#				for batch_idx, goal_vec in enumerate(goal_vec_batch):
-#					print('In dialogue {} - {}'.format(batch_idx, gen_dial_batch[batch_idx]['dial_name']))
-#					self.dataset.printActiveGoalSlot(goal_vec)
-#				input('press...')
 
 			else: # sys
 				speaker, side = self.sys, 'sys'
@@ -319,24 +272,17 @@ class CorpusTraining(nn.Module):
 					gen_dial['bs_vec'].append(bs_vec)
 
 				# record bs along dialogue
-#				for gen_dial, full_bs in zip(gen_dial_batch, full_bs_batch):
 				for b_idx, (gen_dial, full_bs) in enumerate(zip(gen_dial_batch, full_bs_batch)):
 					gen_dial['bs'].append( copy.deepcopy(full_bs) )
 					if not self.config.oracle_dst:
 						gen_dial['bs_pred'].append( copy.deepcopy(bs_pred[b_idx]) )
-
-#				# trace dst on sys side
-#				for batch_idx, full_bs in enumerate(full_bs_batch):
-#					print('In dialogue {}; extra slot: {}'.format(batch_idx, extra_slot[batch_idx]))
-#					self.print_full_bs(full_bs)
-#				input('press...')
 
 			# prev act
 			if turn_idx <= 1: # first turn for usr or sys, no prev act
 				assert len(gen_dial_batch[0]['act_{}'.format(side)]) == 0
 				prev_act = [ ' '.join(['<EOS>']) for _ in range(self.batch_size) ]
 			else:
-				prev_act = [ ' '.join(gen_dial['act_{}'.format(side)][-1]) for gen_dial in gen_dial_batch ] #TODO: confirm by print
+				prev_act = [ ' '.join(gen_dial['act_{}'.format(side)][-1]) for gen_dial in gen_dial_batch ]
 			prev_act, prev_act_len = self.word2tensor(prev_act, self.dataset.act_vocab)
 			prev_act_out, _ = speaker.encode_prev_act(prev_act, prev_act_len)
 
@@ -376,13 +322,6 @@ class CorpusTraining(nn.Module):
 				gen_dial_batch[batch_idx]['lex_word_{}'.format(side)].append(lex_word) # save lex word for reference
 				lex_dial_history[batch_idx] += (' ; ' + lex_word)
 
-#			# trace word
-#			print('In turn: {}'.format(turn_idx))
-#			for batch_idx, (word, act) in enumerate(zip(dec_out['decode'], act_out['decode'])):
-#				print('\t{}: {} ({})'.format(side, word, act))
-#			input('press...')
-
-#			if side == 'sys':
 			act_logprob = act_out['logprobs'] # (batch_size, act_max_len)
 			act_logprob = act_logprob.split(1, dim=0) # a list of (1, act_max_len)
 			act_len = act_out['decode_len'].tolist() # a list of valid act_len
@@ -394,7 +333,6 @@ class CorpusTraining(nn.Module):
 			n_done_dial = 0
 			if side == 'sys':
 				assert len(gen_dial['act_usr']) == len(gen_dial['act_sys']) == len(gen_dial['word_usr']) == len(gen_dial['word_sys']) == len(gen_dial['bs'])
-
 				for gen_dial in gen_dial_batch:
 					if gen_dial['n_side_when_done'] != -1: # dialogue finished already
 						n_done_dial += 1
@@ -415,32 +353,27 @@ class CorpusTraining(nn.Module):
 			else: # continue interaction
 				turn_idx += 1
 				ctx_word = dec_out['decode']
-#				torch.cuda.empty_cache()
-#			sys.exit(1)
 
 		# trim extra turns
 		for gen_dial in gen_dial_batch:
 			for key in ['bs', 'act_usr', 'act_sys', 'word_usr', 'word_sys', 'act_sys_logprob', 'act_sys_len', 'lex_word_usr', 'lex_word_sys', 'bs_pred', 'goal_vec', 'bs_vec']:
 				gen_dial[key] = gen_dial[key][:gen_dial['n_side_when_done']]
-
 		return gen_dial_batch
 
 
 	def prepare_dst_input(self, lex_dial_history, bs_pred):
-		'''
-		Convert lex_dial_history, a list (len=B) of str and full_bs_batch, a list (len=B) of bs_dict into dst input tensor
-		'''
+		'''Convert lex_dial_history, a list (len=B) of str and full_bs_batch, a list (len=B) of bs_dict into dst input tensor'''
 		batch = {'dst_idx': {}, 'sent_len': {}}
 		batch['dst_idx']['dst_ctx'], batch['sent_len']['dst_ctx'] = self.word2tensor(lex_dial_history, self.dataset.dstWord_vocab)
 
 		slot_pred = [] # a list of list
 		value_pred = [] # a list of list
 		for bs in bs_pred:
-		    bs = dict2list(bs) # list of slot value pair
-		    slots = [sv.split('=')[0] for sv in bs] # list of slot
-		    values = [sv.split('=')[1] for sv in bs] # list of value
-		    slot_pred.append( slots )
-		    value_pred.append( values )
+			bs = dict2list(bs) # list of slot value pair
+			slots = [sv.split('=')[0] for sv in bs] # list of slot
+			values = [sv.split('=')[1] for sv in bs] # list of value
+			slot_pred.append( slots )
+			value_pred.append( values )
 		batch['dst_idx']['prev_bs_slot'], batch['sent_len']['prev_bs_slot'] = self.word2tensor(slot_pred, self.dataset.slot_vocab)
 		batch['dst_idx']['prev_bs_value'], batch['sent_len']['prev_bs_value'] = self.word2tensor(value_pred, self.dataset.value_vocab['all'])
 		batch['dst_idx']['curr_nlu_slot'] = batch['dst_idx']['curr_nlu_value'] = None
@@ -456,7 +389,6 @@ class CorpusTraining(nn.Module):
 		'''
 		# trace usr turn domain
 		domain_prev = 'none'
-#		done_domain = set(['taxi', 'police', 'hospital', 'general']) # domain is done if entity is provided by sys
 		done_domain = set()
 		reward = []
 		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
@@ -507,8 +439,8 @@ class CorpusTraining(nn.Module):
 				act_sys = gen_dial['act_sys'][side_idx-1] # check previous sys act
 
 			r = 0
-			info_slots_usr = getSlotWithActInTurn(act_usr, 'inform') # slots informed by usr, e.g., hotel_pricerange
-			reqt_slots_sys = getSlotWithActInTurn(act_sys, 'request') # slots requested by sys, e.g., hotel_pricerange
+			info_slots_usr = get_turn_act_slot(act_usr, 'inform') # slots informed by usr, e.g., hotel_pricerange
+			reqt_slots_sys = get_turn_act_slot(act_sys, 'request') # slots requested by sys, e.g., hotel_pricerange
 			for domain_slot in info_slots_usr:
 				if 'none' in domain_slot: # none is a special slot in act seq
 					continue
@@ -534,12 +466,9 @@ class CorpusTraining(nn.Module):
 
 
 	def get_usr_repeat_info_reward(self, gen_dial, print_log=True):
-		'''
-		if usr repeatedly informs info already in belief state
-		'''
+		'''Check whether the usr repeatedly informs'''
 		reward = []
 		informed_slot_set = set()
-#		for side_idx, (full_bs, act_usr, act_sys) in enumerate(zip(gen_dial['bs'], gen_dial['act_usr'], gen_dial['act_sys'])):
 		for side_idx, act_usr in enumerate(gen_dial['act_usr']):
 			# no repeat info in first turn
 			if side_idx == 0:
@@ -552,17 +481,14 @@ class CorpusTraining(nn.Module):
 				reward.append(0)
 				continue
 
-			info_slots = getSlotWithActInTurn(act_usr, 'inform')
-			reqt_slots_sys = getSlotWithActInTurn(act_sys, 'request')
+			info_slots = get_turn_act_slot(act_usr, 'inform')
+			reqt_slots_sys = get_turn_act_slot(act_sys, 'request')
 			for domain_slot in info_slots:
 				if '_' not in domain_slot: # or 'none' in domain_slot:
 					continue
 				domain, slot = domain_slot.split('_')
 				if domain in ['booking', 'general']: # FIX: these two do not matter
 					continue
-#				for constraint in ['semi', 'book']:
-#					if slot in full_bs[domain][constraint] and full_bs[domain][constraint][slot] != '': # already has value in belief state
-#					if domain_slot not in reqt_slots_sys and slot in full_bs[domain][constraint] and full_bs[domain][constraint][slot] != '':
 				if domain_slot not in reqt_slots_sys and domain_slot in informed_slot_set:
 					r += self.config.usr_repeat_info_reward # punish more if make more mistakes, accumulate rewards
 
@@ -584,9 +510,7 @@ class CorpusTraining(nn.Module):
 
 
 	def get_usr_repeat_ask_reward(self, gen_dial, print_log=True):
-		'''
-		if usr requests information that sys just informed last turn
-		'''
+		'''Check whether the usr requests what the sys just informed in last turn'''
 		reward = []
 		for side_idx, (act_usr, word_usr) in enumerate(zip(gen_dial['act_usr'], gen_dial['word_usr'])):
 			# no repeat ask in first turn
@@ -595,7 +519,7 @@ class CorpusTraining(nn.Module):
 				continue
 			r = 0 # assume correct
 			act_sys = gen_dial['act_sys'][side_idx-1] # check previous sys act
-			reqt_slots = getSlotWithActInTurn(act_usr, 'request') # slots requested by usr, e.g., hotel_pricerange
+			reqt_slots = get_turn_act_slot(act_usr, 'request') # slots requested by usr, e.g., hotel_pricerange
 			for slot in reqt_slots:
 				if slot in act_sys:
 					r += self.config.usr_repeat_ask_reward # punish more if make more mistakes, accumulate rewards
@@ -620,9 +544,8 @@ class CorpusTraining(nn.Module):
 			if side_idx == 0:
 				reward.append(0)
 				continue
-#			r = 0 # assume all requestable slots are answered
 			act_sys = gen_dial['act_sys'][side_idx-1] # check previous sys act
-			reqt_slots = getSlotWithActInTurn(act_sys, 'request') # slots requested by sys, e.g., hotel_pricerange
+			reqt_slots = get_turn_act_slot(act_sys, 'request') # slots requested by sys, e.g., hotel_pricerange
 
 			if len(reqt_slots) == 0: # no request by sys
 				reward.append(0)
@@ -642,11 +565,6 @@ class CorpusTraining(nn.Module):
 			else:
 				r = self.config.usr_miss_answer_reward
 			reward.append(r)
-#			for slot in reqt_slots:
-#				if slot not in act_usr:
-#					r += self.config.usr_miss_answer_reward # punish more if make more mistakes, accumulate rewards
-#			if len(reqt_slots) != 0 and r == 0: # answer all slots
-#				r = self.config.usr_no_miss_answer_reward
 
 		# trace reward
 		if print_log:
@@ -667,7 +585,6 @@ class CorpusTraining(nn.Module):
 		# trace usr turn domain
 		domain_prev = 'none'
 		domain_history_usr = []
-#		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
 		for act_usr in gen_dial['act_usr']:
 			turn_domain = decide_turn_domain(act_usr, '', domain_prev)
 			domain_history_usr.append(turn_domain)
@@ -676,7 +593,6 @@ class CorpusTraining(nn.Module):
 		# trace sys turn domain
 		domain_prev = 'none'
 		domain_history_sys = []
-#		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
 		for act_sys in gen_dial['act_sys']:
 			turn_domain = decide_turn_domain('', act_sys, domain_prev)
 			domain_history_sys.append(turn_domain)
@@ -745,7 +661,7 @@ class CorpusTraining(nn.Module):
 		for side_idx, (act_usr, act_sys, turn_domain) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'], domain_history)):
 			if turn_domain in domain_entityProvided: # done already
 				continue
-			turn_stage = checkTurnStage(act_usr, act_sys, turn_domain, self.keySlot) # info/book/reqt
+			turn_stage = check_turn_type(act_usr, act_sys, turn_domain, self.keySlot) # info/book/reqt
 			if turn_stage in ['book', 'reqt']: # make it not affected
 				weight[side_idx] = 0
 
@@ -777,11 +693,8 @@ class CorpusTraining(nn.Module):
 		reward = []
 		for side_idx, (full_bs, act_usr, act_sys) in enumerate(zip(gen_dial['bs'], gen_dial['act_usr'], gen_dial['act_sys'])):
 			r = 0 # assume no repeat ask until fine one
-			reqt_slots = getSlotWithActInTurn(act_sys, 'request')
+			reqt_slots = get_turn_act_slot(act_sys, 'request')
 			for domain_slot in reqt_slots:
-#				if r != 0:
-#					continue
-#				print('line760:|{}|'.format(domain_slot))
 				if '_' not in domain_slot:
 					continue
 				domain, slot = domain_slot.split('_')
@@ -809,12 +722,9 @@ class CorpusTraining(nn.Module):
 		reward = []
 		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
 			r = 0 # assume all requestable slots are answered
-			reqt_slots = getSlotWithActInTurn(act_usr, 'request') # slots requested by usr, e.g., hotel_pricerange
+			reqt_slots = get_turn_act_slot(act_usr, 'request') # slots requested by usr, e.g., hotel_pricerange
 			for slot in reqt_slots:
-#				if r != 0:
-#					continue
 				if slot not in act_sys:
-#					r = self.config.miss_answer_reward
 					r += self.config.miss_answer_reward # punish more if make more mistakes, accumulate rewards
 
 			if len(reqt_slots) != 0 and r == 0: # answer all slots
@@ -829,6 +739,7 @@ class CorpusTraining(nn.Module):
 				print('{}, sys ans r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
+
 	def check_max_gen_act_seq(self, gen_dial_batch):
 		max_act_len_batch = []
 		for gen_dial in gen_dial_batch:
@@ -840,14 +751,9 @@ class CorpusTraining(nn.Module):
 			max_act_len_batch.append(max_act_len)
 		return max_act_len_batch
 
-	def get_reward(self, gen_dial_batch):
-		'''
-		1) provide entity on turns at info stage
-		2) repeat asking informed slot
-		3) miss requested slot from usr
-		4) sys domain consistant to usr domain
-		5) dst (only for non-oracle dst)
-		'''
+
+	def get_turn_reward(self, gen_dial_batch):
+		'''Obtain turn-level rewards'''
 		avg_sys_r, avg_usr_r = 0, 0
 		for gen_dial in gen_dial_batch:
 			goal = gen_dial['goal']
@@ -880,8 +786,6 @@ class CorpusTraining(nn.Module):
 				repeat_reward = [0 for _ in range(n_side)]
 				answer_reward = [0 for _ in range(n_side)]
 				domain_reward = [0 for _ in range(n_side)]
-#				transit_reward = [0 for _ in range(n_side)]
-#				goal_reward = [0 for _ in range(n_side)]
 				usr_repeat_info = [0 for _ in range(n_side)]
 				usr_repeat_ask  = [0 for _ in range(n_side)]
 				usr_miss_answer = [0 for _ in range(n_side)]
@@ -889,17 +793,13 @@ class CorpusTraining(nn.Module):
 				provide_reward = self.get_entity_provide_reward(gen_dial) # a list of dial len
 				repeat_reward = self.get_repeat_ask_reward(gen_dial)
 				answer_reward = self.get_miss_answer_reward(gen_dial)
-#				domain_reward = self.get_domain_reward(gen_dial)
 				domain_reward = [0 for _ in range(n_side)]
-#				transit_reward = self.get_usr_transit_domain_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
-#				goal_reward = self.get_usr_follow_goal_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 				usr_repeat_info = self.get_usr_repeat_info_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 				usr_repeat_ask  = self.get_usr_repeat_ask_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 				usr_miss_answer = self.get_usr_miss_answer_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 
 			# total reward
 			sys_reward = [ r1+r2+r3+r4 for r1, r2, r3, r4 in zip(provide_reward, repeat_reward, answer_reward, domain_reward) ]
-#			usr_reward = [ r1+r2+r3 for r1, r2, r3 in zip(transit_reward, goal_reward, answer_reward) ]
 			usr_reward = [ r1+r2+r3 for r1, r2, r3 in zip(usr_repeat_info, usr_repeat_ask, usr_miss_answer) ]
 			gen_dial['sys_reward'], gen_dial['usr_reward'] = sys_reward, usr_reward
 			avg_sys_r += np.mean(gen_dial['sys_reward'])
@@ -917,7 +817,6 @@ class CorpusTraining(nn.Module):
 			gen_dial_batch = [gen_dial]
 			
 			# trace generated dialogues
-#			if scan_examples:
 			if True:
 				for gen_dial in gen_dial_batch:
 					print('dial_name:', gen_dial['dial_name'])
@@ -933,7 +832,6 @@ class CorpusTraining(nn.Module):
 			dial_len = [len(gen_dial['word_usr']) for gen_dial in gen_dial_batch]
 			total_turns = sum(dial_len)
 			batch['dial_len'] = torch.tensor(dial_len).long().cuda()
-#			batch['dial_name'] = [x for x in dial_name_batch]
 			batch['dial_name'] = [gen_dial['dial_name']]
 			batch['ref'] = {'act': {}, 'word': {}}
 			batch['ref']['act']['usr'] = batch['ref']['act']['sys'] = ['None' for _ in range(total_turns)] # because no ref in interaction
@@ -952,12 +850,9 @@ class CorpusTraining(nn.Module):
 			success, match, record = evaluator.context_to_response_eval(decode_all, 'test')
 			if success > 1: # normalize to 1
 				success /= 100
-#			input('press...')
 
 			# calcuate reward for each turn using success rate at dialogue level
-			'''
-			we use the same implementation as the one used in https://github.com/snakeztc/NeuralDialog-LaRL
-			'''
+			'''we use the same implementation as in https://github.com/snakeztc/NeuralDialog-LaRL'''
 			reward = success
 			self.all_rewards.append(reward)
 			r = (reward - np.mean(self.all_rewards)) / max(1e-4, np.std(self.all_rewards))
@@ -969,11 +864,9 @@ class CorpusTraining(nn.Module):
 				r = r * 0.99 # set gamma to 0.99
 			gen_dial['sys_reward'] = sys_rewards
 			if self.config.rl_update_usr:
-#				print('get usr reward', file=sys.stderr)
 				gen_dial['usr_reward'] = sys_rewards
 			else:
-#				print('NOT get usr reward', file=sys.stderr)
-				gen_dial['usr_reward'] = [0 for _ in range(dial_len[0])] 
+				gen_dial['usr_reward'] = [0 for _ in range(dial_len[0])]
 
 		avg_sys_r = np.mean(self.all_rewards)
 		avg_usr_r = avg_sys_r if self.config.rl_update_usr else 0
@@ -981,7 +874,6 @@ class CorpusTraining(nn.Module):
 
 
 
-#	def get_rl_loss(self, gen_dial_batch):
 	def get_rl_loss(self, gen_dial_batch, side):
 		assert side in ['sys', 'usr']
 		rl_loss = 0
@@ -989,7 +881,6 @@ class CorpusTraining(nn.Module):
 		for batch_idx in range(self.config.rl_batch_size):
 			gen_dial = gen_dial_batch[batch_idx]
 			n_side = gen_dial['n_side_when_done']
-#			reward = gen_dial['reward']
 			reward = gen_dial['{}_reward'.format(side)]
 			for side_idx in range(n_side):
 #				act_len = gen_dial['act_sys_len'][side_idx] # int
@@ -998,47 +889,35 @@ class CorpusTraining(nn.Module):
 				act_logprob = gen_dial['act_{}_logprob'.format(side)][side_idx] # (act_max_len)
 				rl_loss += (reward[side_idx] * -1*torch.sum(act_logprob[:act_len]))
 				n_token += act_len
-		rl_loss /= n_token # TODO: need this?
+		rl_loss /= n_token
 		return rl_loss
 
 
 	def update_oracle_fullBS(self, full_bs_batch, ctx_word, goal_batch, extra_slot, gen_dial_batch):
 		'''
 		update the full_bs based on the user input at previous turn by key word detection of delexicalised words
-		this is a compromised way to dst since we dont have oracle belief state or a trained dst during interaction
-		NOTE: 1) type, parking and internet cannot be detected in this way
-			  2) always replaced old values with new values for a slot
-			  3) dont record information that is beyond user goal
+		this is a compromised way to dst since we don't have oracle belief state or a trained dst during interaction
+		when using oracle belief state
 		Args:
 			full_bs_batch: a list (len=batch_size=num_dial) of dict
 			ctx_word: a list of str
 			goal_batch: a list of goal
 			extra_slot: count of slots that usrs specified but not in goal in previous dialogue
 		'''
-		# use sys act output to fill up because:
-		# 1) imperfect delex. usr: I will be leaving from the hotel (usr_act: taxi_leaveAt). user actually expresses the slot but it wont be recorded if dected in NL rather than in act
-
-		# use sys word output to fill up because:
-		# 1) imperfect nlg. usr: I will be leaving on [train_day] (usr_act: train_day train_destination)
-		#					sys: What is your destination => this is reasonable, should not be punished. If detected in sys_act, then this will be punished
-		# 2) during pretrain, the policy network can only access to usr word output instead of usr act output
-		
 		for batch_idx, (bs, sent, goal) in enumerate(zip(full_bs_batch, ctx_word, goal_batch)):
-#			usr_act = gen_dial_batch[batch_idx]['act_usr'][-1] # the current usr act seq
 			for domain in self.dataset.all_domains:
 				for constraint in ['semi', 'book']:
 					for slot in bs[domain][constraint]:
 						if slot == 'booked':
 							continue
 						if '[{}_{}]'.format(domain, slot) in sent: # check in NL
-#						if '{}_{}'.format(domain, slot) in usr_act: # check in act
 							if 'info' in goal[domain] and slot in goal[domain]['info']: # not every goal has info
 								bs[domain]['semi'][slot] = goal[domain]['info'][slot]
 							elif 'book' in goal[domain] and slot in goal[domain]['book']: # not every goal has book
 								bs[domain]['book'][slot] = goal[domain]['book'][slot]
 							else: # imperfect simulated usr might say something not in goal, trace the errors
 								extra_slot[batch_idx] += 1
-								bs[domain][constraint][slot] = 'dont care' # put 'dont care' if slot is not in goal, wont affect db result, but needs to be recorded for interaction
+								bs[domain][constraint][slot] = 'dont care'
 
 			# fix parking, internet in hotel domain that cannot be detected by natural language
 			usr_act = gen_dial_batch[batch_idx]['act_usr'][-1] # the current usr act seq
@@ -1052,6 +931,7 @@ class CorpusTraining(nn.Module):
 				if 'taxi_'+slot in usr_act:
 					bs['taxi']['semi'][slot] = 'dont care'
 
+
 	def usr_lexicalise(self, delex_sent, goal):
 		lex_sent = []
 		for word in delex_sent.split():
@@ -1064,16 +944,15 @@ class CorpusTraining(nn.Module):
 				elif 'book' in goal[domain] and slot in goal[domain]['book']: # not every goal has book
 					value = goal[domain]['book'][slot]
 				else: # imperfect simulated usr might say something not in goal, trace the errors
-					value = self.beyond_goal_or_belief(domain, slot, delex_sent) # TODO: change goal if usr said beyond goal
+					value = self.beyond_goal_or_belief(domain, slot, delex_sent)
 				lex_sent.append(str(value))
 			else: # normal word
 				lex_sent.append(word)
 		return ' '.join(lex_sent)
 
+
 	def sys_lexicalise(self, delex_sent, full_bs):
 		domain2ent = addDBPointer({'metadata': full_bs}, return_ent=True) # check real db entity
-#		print('domain2ent:\n', domain2ent)
-#		input('press...')
 		lex_sent = []
 		for word in delex_sent.split():
 			if word[0] == '[' and word[-1] == ']': # delex term
@@ -1095,10 +974,9 @@ class CorpusTraining(nn.Module):
 				lex_sent.append(word)
 		return ' '.join(lex_sent)
 
+
 	def beyond_goal_or_belief(self, domain, slot, delex_sent):
-		'''
-		return a value for the slot that cannot be traced
-		'''
+		'''Return a value for the slot that cannot be traced'''
 		if domain == 'value':
 			if ' -s ' in delex_sent:
 				return '2'
@@ -1152,17 +1030,12 @@ class CorpusTraining(nn.Module):
 
 
 	def word2tensor(self, ctx_word, vocab):
-		'''
-		convert a list of decoded sent (str/list) into padded tensor
-		'''
-#		ctx = [self.dataset.parseSent(sent, self.dataset.vocab) for sent in ctx_word] # pad eos inside parseSent func
+		'''Convert a list of decoded sent (str/list) into padded tensor'''
 		ctx = [self.dataset.parseSent(sent, vocab) for sent in ctx_word] # pad eos inside parseSent func
 		ctx_len = [len(sent) for sent in ctx]
 
 		# pad
 		max_len = max(ctx_len)
-#		for sent in ctx: assert self.dataset.vocab['<PAD>'] not in sent # check if in-place PAD before
-#		for sent in ctx: sent.extend( [self.dataset.vocab['<PAD>'] for _ in range(max_len-len(sent))] )
 		for sent in ctx: assert vocab['<PAD>'] not in sent # check if in-place PAD before
 		for sent in ctx: sent.extend( [vocab['<PAD>'] for _ in range(max_len-len(sent))] )
 		return torch.tensor(ctx).cuda(), torch.tensor(ctx_len).cuda()
@@ -1172,7 +1045,6 @@ class CorpusTraining(nn.Module):
 		if self.config.goal_state_change == 'none' or turn_idx == 0:
 			return goal_vec_batch, torch.tensor(goal_vec_batch).float().cuda()
 		else:
-#			NotImplementedError # dynamic goal state
 			new_goal_vec_batch = []
 			for batch_idx in range(self.batch_size):
 				goal = goal_batch[batch_idx]
@@ -1188,21 +1060,12 @@ class CorpusTraining(nn.Module):
 
 
 	def goal_sampler(self, dial_name_batch):
-		# TODO: make it can either sample from corpus or create unseen new goal
-		if dial_name_batch is not None: # obtain goals from corpus 
+		if dial_name_batch is not None: # obtain goals from corpus
 			goal_batch = []
 			for dial_name in dial_name_batch:
 				goal_batch.append(self.dataset.all_data[dial_name]['goal'])
 		else:
 			NotImplementedError
-
-		# examples				
-#		goal_batch = []
-#		goal_batch.append(self.dataset.all_data['MUL0001.json']['goal']) # restaurant, hotel
-#		goal_batch.append(self.dataset.all_data['MUL0201.json']['goal']) # restaurant, train
-#		goal_batch.append(self.dataset.all_data['MUL0401.json']['goal']) # attraction, train
-#		goal_batch.append(self.dataset.all_data['MUL0018.json']['goal']) # restaurant, hotel, taxi. this fails in taxi on sys side 
-#		goal_batch.append(self.dataset.all_data['MUL0869.json']['goal']) # restaurant, attraction, taxi
 		return goal_batch
 
 
@@ -1237,37 +1100,27 @@ class CorpusTraining(nn.Module):
 			update_loss += dst_update_loss
 			loss['dst_slot'] = dst_loss['slot']
 			loss['dst_value'] = dst_loss['value']
-
 		return loss, update_loss
 
 
 	def update_ewc(self, update_loss, lambda_ewc):
-#		lambda_ewc = 0.01
 		ori_loss = update_loss.item()
 		for i, (name, p) in enumerate(self.named_parameters()):
 			if p.grad is not None:
 				l = lambda_ewc * self.fisher[name].cuda() * (p - self.optpar[name].cuda()).pow(2)
 				update_loss += l.sum()
-#				print('l', l.sum())
-#		print('loss change by ewc {:.2f} -> {:.2f}'.format(ori_loss, update_loss.item()))
 		grad_norm = self.update(update_loss, 'sl')
 		return grad_norm
 
 
 	def update(self, update_loss, train_mode):
-#		assert train_mode in ['sl', 'rl']
 		assert train_mode in ['sl', 'rl_sys', 'rl_usr']
 		if self.config.update == 'joint':
-#			update_loss.backward()
-			# TODO: if memory goes crazy, try update dst first (without retain_graph of dst) then the whole model
 			update_loss.backward(retain_graph=True)
 			grad_norm = nn.utils.clip_grad_norm_(self.parameters(), self.config.grad_clip)
 			if train_mode == 'sl':
 				self.optimizer.step()
 				self.optimizer.zero_grad()
-#			else: # rl
-#				self.rl_optimizer.step()
-#				self.rl_optimizer.zero_grad()
 			elif train_mode == 'rl_sys':
 				self.rl_sys_optimizer.step()
 				self.rl_sys_optimizer.zero_grad()
@@ -1276,16 +1129,13 @@ class CorpusTraining(nn.Module):
 				self.rl_usr_optimizer.zero_grad()
 			return grad_norm
 
-		elif self.config.update == 'iterative': # TODO update jointly or iteratively
-			# update usr
-			# update sys
+		elif self.config.update == 'iterative':
 			raise NotImplementedError
 
 
 	def set_optimizer(self):
 		if self.config.optimizer == 'adam':
 			self.optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.config.lr)
-#			self.rl_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.config.rl_lr)
 			if not self.config.share_dial_rnn:
 				self.rl_sys_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.sys.parameters()), lr=self.config.rl_lr)
 				self.rl_usr_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.usr.parameters()), lr=self.config.rl_lr)
@@ -1302,19 +1152,15 @@ class CorpusTraining(nn.Module):
 		if not os.path.exists(self.config.model_dir):
 			os.makedirs(self.config.model_dir)
 		torch.save(self.state_dict(), self.config.model_dir + '/epoch-{}.pt'.format(str(epoch)))
-#		torch.save(self.state_dict(), self.config.model_dir + '/epoch-{}.pt'.format('best'))
 
 
 	def loadModel(self, model_dir, epoch):
-#		model_name = self.config.model_dir + '/epoch-{}.pt'.format(str(epoch))
 		model_name = model_dir + '/epoch-{}.pt'.format(str(epoch))
 		self.load_state_dict(torch.load(model_name))
 
 
 def collect_dial_interact(decode_all, decode_batch, side, batch, config, dataset):
-	'''
-	collect decoded word, act seq and bs 
-	'''
+	'''Collect decoded word, act seq and bs'''
 	dial_len, dial_name = batch['dial_len'], batch['dial_name']
 	assert len(decode_batch['word_{}'.format(side)]) == torch.sum(dial_len).item()
 	if (side == 'usr' and config.usr_act_type == 'gen') or (side == 'sys' and config.sys_act_type == 'gen'):
@@ -1324,15 +1170,12 @@ def collect_dial_interact(decode_all, decode_batch, side, batch, config, dataset
 	for dial_idx, (_len, _name) in enumerate(zip(dial_len, dial_name)):
 		start = torch.sum(dial_len[:dial_idx])
 		if _name not in decode_all:
-#			decode_all[_name] = {}
 			decode_all[_name] = {'goal': dataset.all_data[_name]['goal']}
 
 		decode_all[_name][side] = {}
 		decode_all[_name][side]['dial_len'] = _len
-#		decode_all[_name][side]['ref_word'] = batch['ref']['word'][side][start: start+_len] # none
 		decode_all[_name][side]['ref_word'] = decode_batch['lex_word_{}'.format(side)][start: start+_len] # put lex word here
 		decode_all[_name][side]['ref_act'] = batch['ref']['act'][side][start: start+_len]
-
 		decode_all[_name][side]['gen_word'] = decode_batch['word_{}'.format(side)][start: start+_len]
 
 		if (side == 'usr' and config.usr_act_type == 'gen') or (side == 'sys' and config.sys_act_type == 'gen'):
@@ -1340,11 +1183,7 @@ def collect_dial_interact(decode_all, decode_batch, side, batch, config, dataset
 		else: # usr=oracle_act or sys=oracle_act/no_use
 			decode_all[_name][side]['gen_act'] = decode_all[_name][side]['ref_act']
 
-#		decode_all[_name][side]['gen_word'] = decode_all[_name][side]['ref_word']
-#		decode_all[_name][side]['gen_act'] = decode_all[_name][side]['ref_act']
-
 		if side == 'sys':
-#			decode_all[_name][side]['ref_bs'] = batch['full_bs'][start: start+_len] # list of dict
 			decode_all[_name][side]['gen_bs'] = decode_batch['bs'][start: start+_len]
 			if not config.oracle_dst: # collect bs prediction
 				decode_all[_name][side]['pred_bs'] = [ dict2list(bs_dict) for bs_dict in decode_batch['bs_pred'][start: start+_len] ]
