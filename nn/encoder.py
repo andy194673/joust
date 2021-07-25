@@ -41,17 +41,14 @@ class RNN(nn.Module):
 			h = h.transpose(0, 1).contiguous().view(self.num_layers, batch_size, self.num_di*self.hidden_size)
 			c = c.transpose(0, 1).contiguous().view(self.num_layers, batch_size, self.num_di*self.hidden_size)
 			state = (h, c)
-#			state = h # TODO: only return h and discard c?
 		else:
 			state = state.transpose(0, 1).contiguouse().view(batch_size, self.di*self.hidden_size)
 
 		output = self.dropout(output) # NOTE: dropout is not applied in LSTM pytorch module at the last layer. need to manually apply one
-		
 		return output, state
 
 
 class SentEncoder(nn.Module):
-#	def __init__(self, input_size, embed_size, hidden_size, num_layers=1, dropout=0.5, bidirectional=True):
 	def __init__(self, input_size, embed_size, hidden_size, num_layers=1, dropout=0.5, bidirectional=True, input2_size=None):
 		super(SentEncoder, self).__init__()
 		self.dropout = nn.Dropout(p=dropout)
@@ -62,8 +59,7 @@ class SentEncoder(nn.Module):
 		else:
 			self.rnn = RNN(embed_size, hidden_size, num_layers=num_layers, dropout=dropout, bidirectional=bidirectional)
 
-#	def forward(self, input_var, input_len, init_state=None):
-#	def forward(self, input_var, input_len, init_state=None, input2_var=None, input2_len=None):
+
 	def forward(self, input_var, input_len, init_state=None, input2_var=None, input2_len=None, return_emb=False):
 		'''
 		Args:
@@ -72,7 +68,6 @@ class SentEncoder(nn.Module):
 		'''
 		embed = self.embed(input_var) # (B, T, E)
 		embed = self.dropout(embed)
-#		if input2_var != None:
 		if isinstance(input2_var, torch.Tensor):
 			assert input_len.tolist() == input2_len.tolist() # make sure two inputs have same sentence length
 			embed2 = self.embed2(input2_var)

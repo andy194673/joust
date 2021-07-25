@@ -1,5 +1,7 @@
 # Transferable Dialogue Systems and User Simulators
 
+NB: The codebase is still in the process of refactoring.
+
 ## Requirements
 python3.6 and the packages in `requirements.txt`. Install them via virtual environment:
 ```console

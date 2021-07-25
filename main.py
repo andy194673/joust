@@ -3,7 +3,7 @@ from data_loader import DataLoader
 
 #from nn.sl4 import CorpusTraining
 from nn.sl4_2 import CorpusTraining # including succ reward
-from evaluate4 import MultiWozEvaluator
+from evaluate import MultiWozEvaluator
 import time
 import torch
 import os

@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
-from nn.model3 import Model
+from nn.agent import Agent
 #from utils.util import remove_pad_sent, pad_sent
 from utils.check_turn_info import decide_turn_domain, checkTurnStage, formKeySlot, getSlotWithActInTurn
 #from utils.checkInfoTurn import decideTurnDomain, checkTurnStage, formKeySlot, getSlotWithActInTurn
@@ -20,8 +20,8 @@ class CorpusTraining(nn.Module):
 		self.config = config
 		self.dataset = dataset
 
-		self.usr = Model(config, dataset, 'usr')
-		self.sys = Model(config, dataset, 'sys')
+		self.usr = Agent(config, dataset, 'usr')
+		self.sys = Agent(config, dataset, 'sys')
 
 		if config.share_dial_rnn:
 			self.dial_rnn = RNN(config.hidden_size, config.hidden_size, dropout=config.dropout, bidirectional=False)

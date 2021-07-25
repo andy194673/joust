@@ -3,7 +3,7 @@ import sys
 import torch
 import torch.nn as nn
 from nn.encoder import SentEncoder, RNN
-from nn.decoder3 import Decoder
+from nn.decoder import Decoder
 from utils.criterion import NLLEntropyValid
 from utils.util_dst import dict2list
 

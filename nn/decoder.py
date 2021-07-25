@@ -1,17 +1,11 @@
-import numpy as np
+import time
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
-#from torch.autograd import Variable
 from nn.attention import Attn
-import copy
-import time
-import sys
-import random
+
 
 class Decoder(nn.Module):
-#	def __init__(self, config, input_size, vocab, idx2word, peep_size, enc_size, output_type):
 	def __init__(self, config, vocab, idx2word, add_size, output_type, attn_src):
 		super(Decoder, self).__init__()
 		self.config = config
@@ -31,8 +25,8 @@ class Decoder(nn.Module):
 			self.attn[src] = Attn(config.hidden_size, self.hidden_size)
 
 		rnn_output_size = self.hidden_size
-		self.rnn = nn.LSTM(rnn_input_size, rnn_output_size, num_layers=config.num_layers, \
-						dropout=config.dropout, bidirectional=False, batch_first=True)
+		self.rnn = nn.LSTM(rnn_input_size, rnn_output_size, num_layers=config.num_layers,
+						   dropout=config.dropout, bidirectional=False, batch_first=True)
 		self.hidden2output = nn.Linear(rnn_output_size, self.output_size)
 
 		self.word2idx = vocab
@@ -40,25 +34,20 @@ class Decoder(nn.Module):
 		assert output_type in ['act', 'word', 'dst_slot']
 		if output_type == 'act':
 			self.dec_len = config.max_act_dec_len
-#		else: # word
 		elif output_type == 'word':
 			self.dec_len = config.max_word_dec_len
 		else: # dst_slot
 			self.dec_len = config.max_slot_dec_len
 		self.output_type = output_type
-
 		self.rnn_output_size = rnn_output_size
 
 	def _step(self, t, input_emb, prev_state, add_var, enc_output, enc_mask, CTX_VEC):
-#		if add_var != None:
 		if isinstance(add_var, torch.Tensor):
 			step_input = [input_emb, add_var]
 		else:
 			step_input = [input_emb]
 		attn_query = prev_state[0].permute(1, 0, 2) # (L=1, B, H) -> (B, L=1, H)
 		for src in self.attn_src:
-#			print('output: {}, SRC: {}'.format(self.output_type, src), file=sys.stderr)
-#			print('query: {}, enc: {}'.format(attn_query.size(), enc_output[src].size()), file=sys.stderr)
 			attn_dist, ctx_vec = self.attn[src](attn_query, enc_output[src], enc_mask[src]) # (B, T) & (B, H)
 			step_input.append(ctx_vec)
 
@@ -70,14 +59,10 @@ class Decoder(nn.Module):
 		output, state = self.rnn(step_input.unsqueeze(1), prev_state) # (B, 1, H) & tuple of (L, B, H)
 		# NOTE: dropout is not applied in LSTM pytorch module at the last layer. need to manually apply one
 		output = self.dropout(output.squeeze(1))
-
-		# SOTA model
 		output = self.hidden2output(output) # (B, V)
-#		output = torch.cat([output, add_var], dim=1) # (B, H + feat_size)
-#		output = self.hidden2output(output)
 		return output, state
 
-#	def forward(self, input_var, input_len, init_state, add_var, enc_output, enc_mask, mode='teacher_force', sample=False, beam_search=False):
+
 	def forward(self, input_var, input_len, init_state, add_var, enc_output, enc_mask, mode='teacher_force', sample=False, beam_search=False, return_ctx_vec=False):
 		'''
 		Args:
@@ -106,7 +91,6 @@ class Decoder(nn.Module):
 		# NOTE: make sure to check legitimate arguments, such as mode cannot be 'teach_force'
 		assert mode == 'teacher_force' or mode == 'gen'
 		self.mode = mode
-#		print(mode)
 
 		assert isinstance(init_state, tuple)
 		for src in self.attn_src:
@@ -119,16 +103,13 @@ class Decoder(nn.Module):
 		# output container
 		logits = torch.zeros(self.batch_size, max_len, self.output_size).cuda()
 		logprobs = torch.zeros(self.batch_size, max_len).cuda()
-#		hiddens = torch.zeros(self.batch_size, max_len, self.hidden_size).cuda() # if mode == 'gen' else None # (B, T, H)
 		hiddens = torch.zeros(self.batch_size, max_len, self.rnn_output_size).cuda() # if mode == 'gen' else None # (B, T, H)
 		sample_wordIdx = torch.zeros(self.batch_size, max_len).long().cuda() if mode == 'gen' else None
 		sentences = [[] for b in range(self.batch_size)] if mode == 'gen' else None
 		finish_flag = [0 for _ in range(self.batch_size)] if mode == 'gen' else None
-		CTX_VEC = { src: torch.zeros(self.batch_size, max_len, self.hidden_size).cuda() for src in self.attn_src} if return_ctx_vec else None
+		CTX_VEC = {src: torch.zeros(self.batch_size, max_len, self.hidden_size).cuda() for src in self.attn_src} if return_ctx_vec else None
 
 		for t in range(max_len):
-#			print('At time {}, input: {}, state: {}'.format(t, input_emb.size(), init_state[0].size()))
-#			input('Decoding step {}'.format(t))
 			output, state = self._step(t, input_emb, init_state, add_var, enc_output, enc_mask, CTX_VEC) # (B, V)
 
 			# record hidden states
@@ -145,7 +126,7 @@ class Decoder(nn.Module):
 				idx = input_var[:, t]
 			else:
 				value, idx = torch.max(output, dim=1) # (B, )
-			input_emb = self.dropout(self.embed(idx)) #.unsqueeze(1) # (B, E)
+			input_emb = self.dropout(self.embed(idx)) # (B, E)
 			init_state = state
 
 		if mode == 'gen':
@@ -153,9 +134,6 @@ class Decoder(nn.Module):
 			sentences = [' '.join(sent[:-1]) for sent in sentences] # remove eos and convert to string
 			# pad 0 in sample_wordIdx for generating samples
 			for b, sent_len in enumerate(sentences_len):
-#				print('b idx:', b, file=sys.stderr)
-#				print(sent_len, sentences[b], file=sys.stderr)
-#				print(sample_wordIdx[b], file=sys.stderr)
 				if sent_len < max_len:
 					assert sample_wordIdx[b, sent_len-1] == self.word2idx['<EOS>']
 				sample_wordIdx[b, sent_len:] = 0
@@ -167,20 +145,20 @@ class Decoder(nn.Module):
 				for src in self.attn_src:
 					CTX_VEC[src] = CTX_VEC[src][:, :max(sentences_len), :]
 
-#		return logits, sentences
 		if mode == 'gen':
-			output = {'logits': logits, 'logprobs': logprobs, 'sample_wordIdx': sample_wordIdx, \
-						'decode': sentences, 'decode_len': torch.tensor(sentences_len), 'hiddens': hiddens, 'ctx_vec': CTX_VEC, 'mode': mode}
+			output = {'logits': logits, 'logprobs': logprobs, 'sample_wordIdx': sample_wordIdx,
+					  'decode': sentences, 'decode_len': torch.tensor(sentences_len), 'hiddens': hiddens, 'ctx_vec': CTX_VEC, 'mode': mode}
 		else:
-			output = {'logits': logits, 'logprobs': logprobs, 'sample_wordIdx': None, \
-						'decode': sentences, 'decode_len': input_len, 'hiddens': hiddens, 'ctx_vec': CTX_VEC, 'mode': mode}
+			output = {'logits': logits, 'logprobs': logprobs, 'sample_wordIdx': None,
+					  'decode': sentences, 'decode_len': input_len, 'hiddens': hiddens, 'ctx_vec': CTX_VEC, 'mode': mode}
 		return output
 	
 
 	def logits2words(self, logits, sentences, sample_wordIdx, logprobs, t, finish_flag, sample):
 		'''
-		logits: (B, V)
-		sample_wordIdx, logprobs: (B, T)
+		Args:
+			logits: (B, V)
+			sample_wordIdx, logprobs: (B, T)
 		'''
 		if sample:
 			T = 2 # temperature, > 0 to encourage explore
@@ -195,7 +173,6 @@ class Decoder(nn.Module):
 		sample_wordIdx[:, t] = idx
 		logprobs[:, t] = torch.log(value)
 		for b_idx, (sentence, i) in enumerate(zip(sentences, idx)):
-#			if i == self.word2idx['<EOS>'] or i == self.word2idx['<PAD>']:
 			if len(sentence) > 0 and sentence[-1] == '<EOS>':
 				finish_flag[b_idx] = 1
 				continue
@@ -203,9 +180,6 @@ class Decoder(nn.Module):
 
 
 	def beam_search(self, input_var, init_state, latent_var, enc_output, enc_mask, beam_size=10):
-		'''
-		The speed up version of beam search
-		'''
 		t0 = time.time()
 		self.mode = 'gen'
 		t_input, t_cand, t_ff, t_sort, t_copy = 0, 0, 0, 0, 0
@@ -415,6 +389,3 @@ class Decoder(nn.Module):
 #		logprobs_batch = torch.tensor(logprobs_batch).float().cuda()
 		logprobs_batch = logprobs_batch.cuda()
 		return {'decode': sentences_batch, 'logprobs': logprobs_batch, 'decode_len': sentences_len_batch, 'mode': 'gen'}
-#			output = {'logits': logits, 'logprobs': logprobs, 'sample_wordIdx': sample_wordIdx, \
-#						'decode': sentences, 'decode_len': torch.tensor(sentences_len), 'hiddens': hiddens, 'mode': mode}
-#		hiddens = torch.zeros(self.batch_size, max_len, self.hidden_size).cuda() # if mode == 'gen' else None # (B, T, H)
