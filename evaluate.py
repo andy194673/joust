@@ -1,24 +1,22 @@
+'''
+	The evaluation script is adapted from the following two files:
+	1. https://github.com/budzianowski/multiwoz/blob/master/evaluate.py
+	2. https://github.com/thu-spmi/damd-multiwoz/blob/master/eval.py
+'''
+
 import math, logging, copy, json
+import numpy as np
 from collections import Counter, OrderedDict
 from nltk.util import ngrams
 from data_preprocess.db_ops import MultiWozDB
 from utils.check_turn_info import get_turn_act_slot, decide_turn_domain
-from utils.util_dst import dict2list
-import numpy as np
-
-##import ontology
-##from config import global_config as cfg
-##from clean_dataset import clean_slot_values
 
 
 class BLEUScorer(object):
-	## BLEU score calculator via GentScorer interface
-	## it calculates the BLEU-4 by taking the entire corpus in
-	## Calulate based multiple candidates against multiple references
 	def __init__(self):
 		pass
 
-#	def score(self, parallel_corpus):
+
 	def score(self, hypothesis, corpus):
 		# containers
 		count = [0, 0, 0, 0]
@@ -28,7 +26,6 @@ class BLEUScorer(object):
 		weights = [0.25, 0.25, 0.25, 0.25]
 
 		# accumulate ngram statistics
-#		for hyps, refs in parallel_corpus:
 		for hyps, refs in zip(hypothesis, corpus):
 			hyps = [hyp.split() for hyp in hyps]
 			refs = [ref.split() for ref in refs]
@@ -73,15 +70,9 @@ class BLEUScorer(object):
 
 
 class MultiWozEvaluator(object):
-#	def __init__(self, reader):
 	def __init__(self, dataset, config):
-#		self.reader = reader
 		self.db = MultiWozDB()
 		self.all_domains = ['restaurant', 'hotel', 'attraction', 'train', 'taxi', 'police', 'hospital']
-##		self.domains = ontology.all_domains
-##		self.domain_files = self.reader.domain_files
-##		self.all_data = self.reader.data
-##		self.test_data = self.reader.test
 		self.dataset = dataset
 		self.config = config
 
@@ -89,19 +80,13 @@ class MultiWozEvaluator(object):
 
 		with open(config.dst_slot_list) as f:
 			self.all_info_slot = json.load(f)
-##		self.all_info_slot = []
-##		for d, s_list in ontology.informable_slots.items():
-##			for s in s_list:
-##				self.all_info_slot.append(d+'-'+s)
 
 		# only evaluate these slots for dialog success
 		self.requestables = ['phone', 'address', 'postcode', 'reference', 'id']
 
 
 	def calculate_eval_reward(self, decode_all, CT, mode='fix_corpus'):
-		'''
-		get per dialogue reward for evaluation
-		'''
+		'''Get per dialogue reward for evaluation'''
 		assert mode in ['fix_corpus', 'interaction']
 		if mode == 'fix_corpus':
 			src = 'ref'
@@ -109,10 +94,8 @@ class MultiWozEvaluator(object):
 			src = 'gen' # since no ref during interaction
 
 		ENT_R, ASK_R, MISS_R, DOM_R = 0, 0, 0, 0 # sys reward
-#		TRAN_R, GOAL_R, INFO_R = 0, 0, 0 # usr reward
 		USR_REPEAT_INFO, USR_REPEAT_ASK, USR_MISS_ANSWER = 0, 0, 0
 		for dial_name, dial in decode_all.items():
-#			gen_dial = {'bs': [], 'word_usr': [], 'word_sys': [], 'act_usr': [], 'act_sys': []}
 			gen_dial = {}
 			gen_dial['dial_name'] = dial_name
 			gen_dial['goal'] = dial['goal']
@@ -125,11 +108,8 @@ class MultiWozEvaluator(object):
 			ent_r = CT.get_entity_provide_reward(gen_dial, print_log=False)
 			ask_r = CT.get_repeat_ask_reward(gen_dial, print_log=False)
 			miss_r = CT.get_miss_answer_reward(gen_dial, print_log=False)
-#			dom_r = CT.get_domain_reward(gen_dial, print_log=False)
 			dom_r = 0
-#			tran_r = CT.get_usr_transit_domain_reward(gen_dial, print_log=False) if self.config.rl_update_usr else 0
-#			goal_r = CT.get_usr_follow_goal_reward(gen_dial, print_log=False) if self.config.rl_update_usr else 0
-#			info_r = CT.get_usr_miss_answer_reward(gen_dial, print_log=False) if self.config.rl_update_usr else 0
+
 			usr_repeat_info = CT.get_usr_repeat_info_reward(gen_dial, print_log=False) if self.config.rl_update_usr else 0
 			usr_repeat_ask  = CT.get_usr_repeat_ask_reward(gen_dial, print_log=False) if self.config.rl_update_usr else 0
 			usr_miss_answer = CT.get_usr_miss_answer_reward(gen_dial, print_log=False) if self.config.rl_update_usr else 0
@@ -138,9 +118,7 @@ class MultiWozEvaluator(object):
 			ASK_R += np.sum(ask_r)
 			MISS_R += np.sum(miss_r)
 			DOM_R += np.sum(dom_r)
-#			TRAN_R += np.sum(tran_r)
-#			GOAL_R += np.sum(goal_r)
-#			INFO_R += np.sum(info_r)
+
 			USR_REPEAT_INFO += np.sum(usr_repeat_info)
 			USR_REPEAT_ASK  += np.sum(usr_repeat_ask)
 			USR_MISS_ANSWER += np.sum(usr_miss_answer)
@@ -153,23 +131,18 @@ class MultiWozEvaluator(object):
 		MISS_R /= n
 		DOM_R /= n
 
-#		R_USR = (TRAN_R + GOAL_R + INFO_R)/n
-#		TRAN_R /= n
-#		GOAL_R /= n
-#		INFO_R /= n
 		R_USR = (USR_REPEAT_INFO + USR_REPEAT_ASK + USR_MISS_ANSWER)/n
 		USR_REPEAT_INFO /= n
 		USR_REPEAT_ASK  /= n
 		USR_MISS_ANSWER /= n
-#		return {'total': R, 'ent': ENT_R, 'ask': ASK_R, 'miss': MISS_R, 'dom': DOM_R, \
-#				'usr': R_USR, 'tran': TRAN_R, 'goal': GOAL_R, 'info': INFO_R}
+
 		return {'total': R, 'ent': ENT_R, 'ask': ASK_R, 'miss': MISS_R, 'dom': DOM_R, \
 				'usr': R_USR, 're_info': USR_REPEAT_INFO, 're_ask': USR_REPEAT_ASK, 'miss_ans': USR_MISS_ANSWER}
 
 
 	def calculate_reqt_acc(self, decode_all, mode='fix_corpus'):
 		'''
-		check if sys answers slots requested by usr
+		Check if sys answers slots requested by usr
 		key difference between this function and success rate:
 			1) this function considers all slots instead of predefined slots in self.requestables
 			2) this function checks answers at turn level instead of dialogue level, which leads to more an accurate measurement
@@ -189,7 +162,6 @@ class MultiWozEvaluator(object):
 			for side_idx, (act_usr, act_sys) in enumerate(zip(dial['usr'][src], dial['sys'][src])):
 				turn_domain = decide_turn_domain(act_usr, act_sys, domain_prev)
 				reqt_slots = get_turn_act_slot(act_usr, 'request')
-#				reqt_slot_count['total'] += len(reqt_slots) # all requsted slots by usr
 				for reqt_slot in reqt_slots:
 					# filter out wrong labelled slots for better evaluation
 					domain, _ = reqt_slot.split('_')
@@ -232,7 +204,7 @@ class MultiWozEvaluator(object):
 				# all domain experiments, sub domain evaluation
 				domains = [d+'_single' for d in ontology.all_domains]
 				domains = domains + ['restaurant_train', 'restaurant_hotel','restaurant_attraction', 'hotel_train', 'hotel_attraction',
-													'attraction_train', 'restaurant_hotel_taxi', 'restaurant_attraction_taxi', 'hotel_attraction_taxi', ]
+									 'attraction_train', 'restaurant_hotel_taxi', 'restaurant_attraction_taxi', 'hotel_attraction_taxi', ]
 				for domain in domains:
 					file_list = self.domain_files.get(domain, [])
 					if not file_list:
@@ -250,15 +222,16 @@ class MultiWozEvaluator(object):
 				metric_result = self._get_metric_results(data, domain, file_list)
 				if metric_result:
 					metric_results.append(metric_result)
-
 		return metric_results
+
 
 	def validation_metric(self, data):
 		bleu = self.bleu_metric(data)
 		accu_single_dom, accu_multi_dom, multi_dom_num = self.domain_eval(data)
-		success, match, req_offer_counts, dial_num = self.context_to_response_eval(data,
-																						same_eval_as_cambridge=cfg.same_eval_as_cambridge)
+		success, match, req_offer_counts, dial_num = \
+			self.context_to_response_eval(data, same_eval_as_cambridge=cfg.same_eval_as_cambridge)
 		return bleu, success, match
+
 
 	def _get_metric_results(self, data, domain='all', file_list=None):
 		metric_result = {'domain': domain}
@@ -284,8 +257,8 @@ class MultiWozEvaluator(object):
 		avg_act_num, avg_diverse_score = self.multi_act_eval(data, file_list)
 		accu_single_dom, accu_multi_dom, multi_dom_num = self.domain_eval(data, file_list)
 
-		success, match, req_offer_counts, dial_num = self.context_to_response_eval(data, file_list,
-																						same_eval_as_cambridge=cfg.same_eval_as_cambridge)
+		success, match, req_offer_counts, dial_num = \
+			self.context_to_response_eval(data, file_list, same_eval_as_cambridge=cfg.same_eval_as_cambridge)
 		req_slots_acc = {}
 		for req in self.requestables:
 			acc = req_offer_counts[req+'_offer']/(req_offer_counts[req+'_total'] + 1e-10)
@@ -318,6 +291,7 @@ class MultiWozEvaluator(object):
 		else:
 			return None
 
+
 	def bleu_metric(self, data, eval_dial_list=None):
 		gen, truth = [],[]
 		for row in data:
@@ -333,13 +307,14 @@ class MultiWozEvaluator(object):
 			sc = 0.0
 		return sc
 
+
 	def value_similar(self, a,b):
 		return True if a==b else False
-
 		# the value equal condition used in "Sequicity" is too loose
 		if a in b or b in a or a.split()[0] == b.split()[0] or a.split()[-1] == b.split()[-1]:
 			return True
 		return False
+
 
 	def _bspn_to_dict(self, bspn, no_name=False, no_book=False, bspn_mode = 'bspn'):
 		constraint_dict = self.reader.bspan_to_constraint_dict(bspn, bspn_mode = bspn_mode)
@@ -354,6 +329,7 @@ class MultiWozEvaluator(object):
 						continue
 				constraint_dict_flat[key] = v
 		return constraint_dict_flat
+
 
 	def _constraint_compare(self, truth_cons, gen_cons, slot_appear_num=None, slot_correct_num=None):
 		tp,fp,fn = 0,0,0
@@ -376,6 +352,7 @@ class MultiWozEvaluator(object):
 				false_slot.append(slot)
 		acc = len(self.all_info_slot) - fp - fn
 		return tp,fp,fn, acc, list(set(false_slot))
+
 
 	def domain_eval(self, data, eval_dial_list = None):
 		dials = self.pack_dial(data)
@@ -528,9 +505,6 @@ class MultiWozEvaluator(object):
 #			if p not in gold and p.rsplit("-", 1)[0] not in miss_slot:
 			if p not in gold and p.split('=')[0] not in miss_slot:
 				wrong_pred += 1
-#		ACC_TOTAL = len(self.all_info_slot)
-#		ACC = len(self.all_info_slot) - miss_gold - wrong_pred
-#		ACC = ACC / float(ACC_TOTAL)
 		slot_acc = (len(self.all_info_slot) - miss_gold - wrong_pred) / len(self.all_info_slot)
 		return slot_acc, joint_acc
 
@@ -540,12 +514,7 @@ class MultiWozEvaluator(object):
 		for dial_name, dial in decode_all.items():
 			assert len(dial['sys']['pred_bs']) == len(dial['sys']['ref_bs'])
 			for t, (pred_bs, ref_bs) in enumerate(zip(dial['sys']['pred_bs'], dial['sys']['ref_bs'])):
-#				pred_bs, ref_bs = set(dict2list(pred_bs)), set(dict2list(ref_bs))
 				pred_bs, ref_bs = set(pred_bs), set(ref_bs)
-#				print('In dial {}, turn: {}'.format(dial_name, t))
-#				print('ref:', ref_bs)
-#				print('gen:', pred_bs)
-
 				sv_acc, joint_acc = self._compute_acc(ref_bs, pred_bs)
 				SV_ACC += sv_acc
 				JOINT_ACC += joint_acc
@@ -555,9 +524,7 @@ class MultiWozEvaluator(object):
 				ref_bs = set([sv.split('=')[0] for sv in ref_bs])
 				slot_acc, _ = self._compute_acc(ref_bs, pred_bs)
 				SLOT_ACC += slot_acc
-
 				n_turns += 1
-
 		return JOINT_ACC/n_turns, SV_ACC/n_turns, SLOT_ACC/n_turns
 				
 
@@ -605,11 +572,10 @@ class MultiWozEvaluator(object):
 		precision = total_tp / (total_tp + total_fp + 1e-10)
 		recall = total_tp / (total_tp + total_fn + 1e-10)
 		f1 = 2 * precision * recall / (precision + recall + 1e-10)
-
 		return f1 * 100
 
-	def multi_act_eval(self, data, eval_dial_list = None):
 
+	def multi_act_eval(self, data, eval_dial_list = None):
 		dials = self.pack_dial(data)
 		total_act_num, total_slot_num = 0, 0
 
@@ -653,42 +619,21 @@ class MultiWozEvaluator(object):
 		return total_act_num, total_slot_num
 
 
-##	def context_to_response_eval(self, data, eval_dial_list = None, same_eval_as_cambridge=False):
 	def context_to_response_eval(self, dialogues_gen, dType):
-#		assert dType in ['valid', 'test']
 		assert dType in ['valid', 'test', 'train']
-##		dials = self.pack_dial(data)
-##		counts = {}
-##		for req in self.requestables:
-##			counts[req+'_total'] = 0
-##			counts[req+'_offer'] = 0
-##
-##		dial_num, successes, matches = 0, 0, 0
-
-##		for dial_id in dials:
-##			if eval_dial_list and dial_id +'.json' not in eval_dial_list:
-##				continue
-##			dial = dials[dial_id]
 		dial_num, successes, matches = 0, 0, 0
 		record = {}
 		for dial_name, dial in dialogues_gen.items():
 			reqs = {}
 			goal = {}
 			record[dial_name] = {}
-##			for domain in ontology.all_domains:
-##				if self.all_data[dial_id]['goal'].get(domain):
-##					true_goal = self.all_data[dial_id]['goal']
-##					goal = self._parseGoal(goal, true_goal, domain)
 			for domain in self.all_domains:
 				if self.dataset.all_data[dial_name]['goal'][domain]: # if domain has goal
 					goal = self._parseGoal(goal, self.dataset.all_data[dial_name]['goal'], domain)
-			# print(goal)
+
 			for domain in goal.keys():
 				reqs[domain] = goal[domain]['requestable']
 
-			# print('\n',dial_id)
-##			success, match, stats, counts = self._evaluateGeneratedDialogue(dial, goal, reqs, counts,
-##																	same_eval_as_cambridge=same_eval_as_cambridge)
 			success, match, stats = self._evaluateGeneratedDialogue(dial['sys'], goal, reqs, dType)
 			record[dial_name]['--Success--'] = success
 			record[dial_name]['--Match--'] = match
@@ -701,43 +646,22 @@ class MultiWozEvaluator(object):
 			matches += match
 			dial_num += 1
 
-			# for domain in gen_stats.keys():
-			#	 gen_stats[domain][0] += stats[domain][0]
-			#	 gen_stats[domain][1] += stats[domain][1]
-			#	 gen_stats[domain][2] += stats[domain][2]
-
-			# if 'SNG' in filename:
-			#	 for domain in gen_stats.keys():
-			#		 sng_gen_stats[domain][0] += stats[domain][0]
-			#		 sng_gen_stats[domain][1] += stats[domain][1]
-			#		 sng_gen_stats[domain][2] += stats[domain][2]
-
-		# assert valid number of dialogue for evaluation, hard core it in case accidently change in somewhere else, andy
-#		if dType == 'valid': assert dial_num == 999
-#		if dType == 'test': assert dial_num == 1000
-
-		# self.logger.info(report)
 		succ_rate = successes/( float(dial_num) + 1e-10) * 100
 		match_rate = matches/(float(dial_num) + 1e-10) * 100
-#		return succ_rate, match_rate, counts, dial_num
 		return succ_rate, match_rate, record
 
 
-##	def _evaluateGeneratedDialogue(self, dialog, goal, real_requestables, counts,
-##												   soft_acc=False, same_eval_as_cambridge=False):
 	def _evaluateGeneratedDialogue(self, dialog, goal, real_requestables, dType, soft_acc=False):
 		"""Evaluates the dialogue created by the networks.
 			First we load the user goal of the dialogue, then for each turn
 			generated by the system we look for key-words.
 			For the Inform rate we look whether the entity was proposed.
-			For the Success rate we look for requestables slots"""
+			For the Success rate we look for requestables slots
 
-		'''
 		Args:
 			dialog: the evaluated dialogue, a list of turns, each turn is a dict with 'word' and 'bs' as keys
-		'''
+		"""
 
-#		assert len(dialog['gen_bs']) == len(dialog['gen_act']) == len(dialog['gen_word']) == dialog['dial_len']
 		assert len(dialog['gen_bs']) == len(dialog['gen_act']) == len(dialog['gen_word'])
 		dial_len = len(dialog['gen_bs'])
 
@@ -748,14 +672,12 @@ class MultiWozEvaluator(object):
 		provided_requestables = {}
 		venue_offered = {}
 		domains_in_goal = []
-##		bspans = {}
 
 		for domain in goal.keys():
 			venue_offered[domain] = []
 			provided_requestables[domain] = []
 			domains_in_goal.append(domain)
 
-##		for t, turn in enumerate(dialog):
 		for t in range(dial_len):
 ##			if t == 0:
 ##				continue
@@ -841,17 +763,14 @@ class MultiWozEvaluator(object):
 		for domain in goal.keys():
 			# if name was provided for the user, the match is being done automatically
 			if 'name' in goal[domain]['informable']:
-##				venue_offered[domain] = '[value_name]'
 				venue_offered[domain] = '[' + domain + '_name]'
 
 			# special domains - entity does not need to be provided
 			if domain in ['taxi', 'police', 'hospital']:
-##				venue_offered[domain] = '[value_name]'
 				venue_offered[domain] = '[' + domain + '_name]'
 
 			if domain == 'train':
 				if not venue_offered[domain] and 'id' not in goal[domain]['requestable']:
-##					venue_offered[domain] = '[value_name]'
 					venue_offered[domain] = '[' + domain + '_name]'
 
 		"""
@@ -897,13 +816,7 @@ class MultiWozEvaluator(object):
 			else:
 				match = 0.0
 
-##		for domain in domains_in_goal:
-##			for request in real_requestables[domain]:
-##				counts[request+'_total'] += 1
-##				if request in provided_requestables[domain]:			   counts[request+'_offer'] += 1
-
 		# SUCCESS
-#		if match == 1.0: # will be fixed afterward
 		for domain in domains_in_goal:
 			success_stat = 0
 			domain_success = 0
@@ -920,7 +833,6 @@ class MultiWozEvaluator(object):
 				if request in provided_requestables[domain]:
 					domain_success += 1
 
-			# if domain_success >= len(real_requestables[domain]):
 			if domain_success == len(real_requestables[domain]):
 				success += 1
 				success_stat = 1
@@ -938,10 +850,7 @@ class MultiWozEvaluator(object):
 
 		if match == 0 and success == 1:
 			success = 0
-
-##		return success, match, stats, counts
 		return success, match, stats
-
 
 
 	def _parseGoal(self, goal, true_goal, domain):
@@ -954,7 +863,6 @@ class MultiWozEvaluator(object):
 				if 'book' in true_goal[domain]:
 					goal[domain]['requestable'].append('reference')
 				if 'reqt' in true_goal[domain]:
-##					if 'id' in true_goal[domain]['reqt']:
 					if 'trainID' in true_goal[domain]['reqt']:
 						goal[domain]['requestable'].append('id')
 			else:
@@ -966,13 +874,6 @@ class MultiWozEvaluator(object):
 				if 'book' in true_goal[domain]:
 					goal[domain]['requestable'].append("reference")
 
-##			for s, v in true_goal[domain]['info'].items():
-##				s_,v_ = clean_slot_values(domain, s,v)
-##				if len(v_.split())>1:
-##					v_ = ' '.join([token.text for token in self.reader.nlp(v_)]).strip()
-##				goal[domain]["informable"][s_] = v_
-
-#			goal[domain]["informable"] = d['goal'][domain]['info']
 			goal[domain]["informable"] = true_goal[domain]['info']
 
 			if 'book' in true_goal[domain]:
@@ -981,10 +882,6 @@ class MultiWozEvaluator(object):
 
 
 	def calculateBLEU(self, decode_all):
-		'''
-		decode_all[_name][side]['ref_word']
-		decode_all[_name][side]['gen_word']
-		'''
 		ref = {'usr': [], 'sys': []}
 		gen = {'usr': [], 'sys': []}
 		for dial_name in sorted(decode_all.keys()):
@@ -998,8 +895,3 @@ class MultiWozEvaluator(object):
 		bleu_usr = self.bleu_scorer.score(gen['usr'], ref['usr'])
 		bleu_sys = self.bleu_scorer.score(gen['sys'], ref['sys'])
 		return bleu_usr, bleu_sys
-
-
-if __name__ == '__main__':
-	pass
-
