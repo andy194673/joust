@@ -10,6 +10,7 @@ import os
 import json
 import sys
 import random
+from tqdm import tqdm
 import numpy as np
 from utils.util_dst import dict2list
 from nn.dst import DST
@@ -181,7 +182,6 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 			'act_usr': 0, 'act_sys': 0, \
 			'dst_slot': 0, 'dst_value': 0, \
 			'count': 0}
-#	LOSS = {'slot': 0, 'value': 0, 'count': 0}
 	n = 0
 	grad_list = []
 	decode_all = {}
@@ -199,22 +199,14 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		if n == 1 and epoch_idx == 0 and dType == 'train':
 			print('{} dialogues takes {:.1f} sec, estimated time for an epoch: {:.1f}'.format(config.batch_size, time.time()-t0, \
 					len(dataset.data[dType])/config.batch_size*(time.time()-t0) ), file=sys.stderr)
-
-#		if n == 10:
-#			print('done 10 batches', file=sys.stderr)
-#			input('press...')
-
+		print("batch list idx:", n, file=sys.stderr)
 
 	if mode == 'teacher_force':
 		n = LOSS['count']
 		grad_norm = np.mean(grad_list) if len(grad_list) > 0 else 0
 		print('{} Loss Epoch: {} | Word usr: {:.3f}, sys: {:.3f} | Act usr: {:.3f}, sys: {:.3f} | Dst slot: {:.3f}, value: {:.3f} | grad: {:.2f} | time: {:.1f}'.format(dType, epoch_idx, LOSS['word_usr']/n, LOSS['word_sys']/n, LOSS['act_usr']/n, LOSS['act_sys']/n, LOSS['dst_slot']/n, LOSS['dst_value']/n, grad_norm, time.time()-t0))
 		print('{} Loss Epoch: {} | Word usr: {:.3f}, sys: {:.3f} | Act usr: {:.3f}, sys: {:.3f} | Dst slot: {:.3f}, value: {:.3f} | grad: {:.2f} | time: {:.1f}'.format(dType, epoch_idx, LOSS['word_usr']/n, LOSS['word_sys']/n, LOSS['act_usr']/n, LOSS['act_sys']/n, LOSS['dst_slot']/n, LOSS['dst_value']/n, grad_norm, time.time()-t0), file=sys.stderr)
-#		gpu = torch.cuda.max_memory_allocated() // 1000000 
-#		print('{} Loss Epoch: {} | Slot: {:.3f}, Value: {:.3f} | grad: {:.2f} | time: {:.1f} | gpu: {}'\
-#			.format(dType, epoch_idx, LOSS['slot']/n, LOSS['value']/n, grad_norm, time.time()-t0, gpu))
-#		print('{} Loss Epoch: {} | Slot: {:.3f}, Value: {:.3f} | grad: {:.2f} | time: {:.1f} | gpu: {}'\
-#			.format(dType, epoch_idx, LOSS['slot']/n, LOSS['value']/n, grad_norm, time.time()-t0, gpu), file=sys.stderr)
+
 		total_loss = 0
 		for k, v in LOSS.items():
 			total_loss += v
