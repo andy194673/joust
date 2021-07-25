@@ -1,7 +1,6 @@
 from utils.argument import get_config
+from data_loader import DataLoader
 
-
-from data import DataLoader
 #from nn.sl4 import CorpusTraining
 from nn.sl4_2 import CorpusTraining # including succ reward
 from evaluate4 import MultiWozEvaluator
@@ -14,6 +13,7 @@ import random
 import numpy as np
 from utils.util_dst import dict2list
 from nn.dst import DST
+
 
 def write_sample(decode_all, src, epoch_idx, sample_file, record, reqt_record, res, reward):
 	def two_digits(x):
@@ -287,6 +287,7 @@ def collect_dial(decode_all, decode_batch, side, batch, turn_idx):
 				decode_all[dial_name][side]['pred_nlu'].append( dict2list(decode_batch['nlu_pred'][batch_idx]) ) # dict
 				decode_all[dial_name][side]['ref_bs'].append( dict2list(batch['ref']['dst']['bs'][batch_idx]) )
 
+
 def collect_dial_interact(decode_all, decode_batch, side, batch):
 	'''
 	collect decoded word, act seq and bs 
@@ -399,11 +400,11 @@ def trainIter(config, dataset, CT):
 		with torch.no_grad():
 			test(config, dataset, CT) # check performance before doing finetune or rl
 
-	# test with full usr if necessary
-	if config.full_usr_dir != '':
-		full_CT = CorpusTraining(config, dataset)
-		full_CT = full_CT.cuda()
-		full_CT.loadModel(config.full_usr_dir, 'best')
+	# # test with full usr if necessary
+	# if config.full_usr_dir != '':
+	# 	full_CT = CorpusTraining(config, dataset)
+	# 	full_CT = full_CT.cuda()
+	# 	full_CT.loadModel(config.full_usr_dir, 'best')
 	print('-------------------------------------------------------------------------')
 	print('-------------------------------------------------------------------------', file=sys.stderr)
 
@@ -440,9 +441,9 @@ def trainIter(config, dataset, CT):
 				success, match, bleu, score_auto = runOneEpoch('valid', epoch_idx, 'gen')
 
 			# INTERACT with pretrained simulator
-			if config.full_usr_dir != '':
-				full_CT.sys = CT.sys # use the real sys instead of sys trained with all data
-				test_with_usr_simulator(config, dataset, full_CT, 'valid', tag='full_usr')
+			# if config.full_usr_dir != '':
+			# 	full_CT.sys = CT.sys # use the real sys instead of sys trained with all data
+			# 	test_with_usr_simulator(config, dataset, full_CT, 'valid', tag='full_usr')
 
 #			score = score_auto + score_usr
 			if config.mode == 'rl': # pick best model based on automatic evaluation on dev during interaction
@@ -488,16 +489,16 @@ def test(config, dataset, CT):
 	# evaluate
 	CT.eval()
 	with torch.no_grad():
-		dataset.init() 
-		runOneEpoch('valid', config.load_epoch, 'gen')
+		# dataset.init()
+		# runOneEpoch('valid', config.load_epoch, 'gen')
 
 		# BACK
 		dataset.init()
 		runOneEpoch('test', config.load_epoch, 'gen')
 
-#		# test with usr trained with same data amount
-#		test_with_usr_simulator(config, dataset, CT, 'valid', act_result=config.usr_act_result, word_result=config.usr_word_result, \
-#									dst_result=config.usr_dst_result, tag='usr')
+		# test with usr trained with same data amount
+		test_with_usr_simulator(config, dataset, CT, 'valid', act_result=config.usr_act_result, word_result=config.usr_word_result, \
+									dst_result=config.usr_dst_result, tag='usr')
 #
 #		# test with full usr if necessary
 #		if config.full_usr_dir != '':
@@ -712,6 +713,7 @@ def set_seed(args):
 	torch.backends.cudnn.deterministic = True
 	torch.backends.cudnn.enabled = False
 	torch.backends.cudnn.benchmark = False
+
 
 if __name__ == '__main__':
 	# load config
