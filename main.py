@@ -1,5 +1,4 @@
 import os, sys, time
-import json
 import random
 from tqdm import tqdm
 import numpy as np
@@ -10,67 +9,58 @@ from data_loader import DataLoader
 from networks.model import Model
 from evaluate import MultiWozEvaluator
 from utils.util_dst import dict2list
+from utils.util_writeout import write_sample, collect_dial, collect_dial_interact
 
 
-def write_sample(decode_all, src, epoch_idx, sample_file, record, reqt_record, res, reward):
-	def two_digits(x):
-		if x < 10:
-			return '0'+str(x)
-		else:
-			return str(x)
+def compute_fisher_matric(config, dataset):
+	'''Compute fisher matric for EWC adaptation method'''
+	model = Model(config, dataset)
+	model = model.cuda()
+	print('Load model in computing fisher')
+	model.loadModel(config.model_dir, config.load_epoch)
 
-	epoch_idx = 'Epoch-{}'.format(epoch_idx)
-	out_f = sample_file
-	if os.path.exists(out_f):
-		with open(out_f) as f:
-			sample = json.load(f)
-	else:
-		sample = {}
+	print('Computing Fisher Matrix')
+	model.train()
+	fisher, optpar = {}, {}
+	for n, p in model.named_parameters():
+		optpar[n] = torch.Tensor(p.cpu().data).cuda()
+		p.data.zero_()
+		fisher[n] = torch.Tensor(p.cpu().data).cuda()
 
-	# pairwise ref and decoded str in order
-	sample[epoch_idx] = {}
-	for dial_idx, dial_name in enumerate(sorted(decode_all.keys())):
-		if dial_idx > config.print_sample:
+	src_dataset = DataLoader(config, load_src=True)
+	n_examples = 0
+	while True:
+		# get batch
+		batch_list = src_dataset.next_batch_list('train')
+		if batch_list == None:
 			break
 
-		dial = decode_all[dial_name]
-		sample[epoch_idx][dial_name] = {}
+		for turn_idx, batch in enumerate(batch_list):
+			n_examples += 1
+			if turn_idx != 0:
+				if config.share_dial_rnn: assert batch['init_dial_rnn'] == None
+				if not config.share_dial_rnn: assert batch['init_dial_rnn']['usr'] == None and batch['init_dial_rnn']['sys'] == None
+				batch['init_dial_rnn'] = decode_batch['init_dial_rnn']
 
-		if src == 'dst':
-			for i, (pred_nlu, pred_bs, ref_bs) in enumerate(zip(dial['sys']['pred_nlu'], dial['sys']['pred_bs'], dial['sys']['ref_bs'])):
-				idx_sys = two_digits(2*i+1)
-				sample[epoch_idx][dial_name]['{}-nlu({})'.format(idx_sys, 'gen')] = ' | '.join(pred_nlu)
-				sample[epoch_idx][dial_name]['{}-bs({})'.format(idx_sys, 'gen')] = ' | '.join(pred_bs)
-				sample[epoch_idx][dial_name]['{}-bs({})'.format(idx_sys, 'ref')] = ' | '.join(ref_bs)
-				pred_bs, ref_bs = set(pred_bs), set(ref_bs)
-				match_bs = pred_bs & ref_bs
-				sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'miss')] = ' | '.join(sorted(list(ref_bs-match_bs)))
-				sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'redt')] = ' | '.join(sorted(list(pred_bs-match_bs)))
-				sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'MATCH')] = 1 if pred_bs==ref_bs else 0
-			continue
+			decode_batch = model(batch, turn_idx=turn_idx, mode='teacher_force')
+			loss, update_loss = model.get_loss(batch)
+			update_loss.backward(retain_graph=True)
 
-		for i, (ref_usr, gen_usr, ref_sys, gen_sys) in enumerate(zip(dial['usr']['ref_'+src], dial['usr']['gen_'+src], dial['sys']['ref_'+src], dial['sys']['gen_'+src])):
-			idx_usr = two_digits(2*i)
-			idx_sys = two_digits(2*i+1)
-			sample[epoch_idx][dial_name]['{}-usr({})'.format(idx_usr, 'gen')] = '{}'.format(gen_usr)
-			sample[epoch_idx][dial_name]['{}-usr({})'.format(idx_usr, 'ref')] = '{}'.format(ref_usr)
-			sample[epoch_idx][dial_name]['{}-sys({})'.format(idx_sys, 'gen')] = '{}'.format(gen_sys)
-			sample[epoch_idx][dial_name]['{}-sys({})'.format(idx_sys, 'ref')] = '{}'.format(ref_sys)
+			for n, p in model.named_parameters():
+				if p.grad is not None:
+					fisher[n].data += p.grad.data ** 2
+			model.optimizer.zero_grad()
+			print('Done collect {} examples in fisher matrix'.format(n_examples), file=sys.stderr)
 
-		for metric, value in record[dial_name].items(): # metric=success or match
-			sample[epoch_idx][dial_name][metric] = value
+	for name_f, _ in fisher.items():
+		fisher[name_f] /= n_examples
 
-		sample[epoch_idx][dial_name]['--miss_reqt--'] = reqt_record[dial_name]
-
-	sample['result'] = res
-	sample['reward'] = reward
-		
-	with open(out_f, 'w') as f:
-		json.dump(sample, f, indent=2, sort_keys=True)
-	print('Done writing out', file=sys.stderr)
+	print('Done collect {} examples in fisher matrix'.format(n_examples))
+	return fisher, optpar
 
 
 def runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list):
+	'''Train both agents using a batch of dialogues'''
 	def token2tensor(sent_batch, vocab):
 		idx_batch = []
 		for sent in sent_batch:
@@ -151,7 +141,80 @@ def runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list):
 					assert dial_len == len(decode_all[dial_name][side]['gen_{}'.format(key)])
 
 
+def runRLOneEpoch(epoch_idx):
+	'''Train both agents one epoch using reinforcement learning'''
+	t0 = time.time()
+	update_count = 0 # count of rl update
+	while True:
+		if (update_count * config.rl_batch_size) >= config.rl_dial_one_epoch:
+			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0))
+			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0), file=sys.stderr)
+			break
+
+		# run rl
+		RL_LOSS = []
+		for i in range(config.rl_iterate_ratio):
+			# sample goals for interaction
+			dial_name_batch = dataset.next_rl_batch() # a list of dial name
+			if len(dial_name_batch) != config.rl_batch_size:
+				dataset.init_rl()
+				dial_name_batch = dataset.next_rl_batch()
+
+			gen_dial_batch = model.interact(beam_search=False, dial_name_batch=dial_name_batch)
+
+			# check maximum act seq of each dialogue
+			max_act_len_batch = model.check_max_gen_act_seq(gen_dial_batch)
+
+			if config.reward_type == 'turn_reward':
+				avg_sys_r, avg_usr_r = model.get_turn_reward(gen_dial_batch)
+			else:
+				avg_sys_r, avg_usr_r = model.get_success_reward(gen_dial_batch, evaluator)
+
+			rl_loss = model.get_rl_loss(gen_dial_batch, 'sys')
+			grad_norm = model.update(rl_loss, 'rl_sys')
+
+			if config.rl_update_usr and epoch_idx < config.rl_usr_epoch:
+				rl_usr_loss = model.get_rl_loss(gen_dial_batch, 'usr')
+				grad_usr_norm = model.update(rl_usr_loss, 'rl_usr')
+			else:
+				rl_usr_loss, grad_usr_norm = 0, 0
+
+			update_count += 1
+			gpu = torch.cuda.max_memory_allocated() // 1000000
+			print('idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f} | gpu: {} | max_act_len: {} -> avg: {}'.format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm, gpu, max_act_len_batch, np.mean(max_act_len_batch)))
+
+			# trace generated dialogues
+			# for gen_dial in gen_dial_batch:
+			# 	for i, (act_usr, act_sys, word_usr, word_sys) in \
+			# 			enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
+			# 		print('At side turn: {}'.format(i))
+			# 		print('USR: {} ({})'.format(word_usr, act_usr))
+			# 		print('SYS: {} ({})'.format(word_sys, act_sys))
+			del gen_dial_batch
+			del avg_sys_r, avg_usr_r
+			del rl_loss, rl_usr_loss
+			del grad_norm, grad_usr_norm
+			torch.cuda.empty_cache()
+
+		# run sl for one batch if iterate between sl and rl
+		if config.rl_iterate:
+			batch_list = dataset.next_batch_list('train')
+			grad_list = []
+			if batch_list == None:
+				dataset.init()
+				batch_list = dataset.next_batch_list('train')
+			runBatchDialogue(batch_list, None, 'train', 'teacher_force', None, grad_list) # update by sl
+			print('sl grad: {:.2f}'.format(np.mean(grad_list)))
+			print('sl grad: {:.2f}'.format(np.mean(grad_list)), file=sys.stderr)
+			del batch_list
+
+		if update_count == 1:
+			t1 = time.time()-t0
+			print('update once: {:.1f}, estimate time rl one epoch: {:.1f}'.format(t1, config.rl_dial_one_epoch/config.rl_batch_size*t1))
+
+
 def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
+	'''Train both agents one epoch using supervised learning'''
 	t0 = time.time()
 	LOSS = {'word_usr': 0, 'word_sys': 0,
 			'act_usr': 0, 'act_sys': 0,
@@ -210,123 +273,8 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		return success, match, bleu_sys, score
 
 
-def collect_dial(decode_all, decode_batch, side, batch, turn_idx):
-	for batch_idx, dial_name in enumerate(batch['dial_name']):
-		if not batch['valid_turn'][batch_idx]:
-			continue
-
-		if dial_name not in decode_all:
-#			decode_all[dial_name] = {'usr': {}, 'sys': {}}
-			decode_all[dial_name] = {'usr': {}, 'sys': {}, 'goal': dataset.all_data[dial_name]['goal']}
-
-		if turn_idx == 0:
-			for k in ['ref_word', 'ref_act', 'gen_word', 'gen_act']:
-				decode_all[dial_name][side][k] = []
-			if side == 'sys':
-				decode_all[dial_name][side]['gen_bs'] = []
-				if not config.oracle_dst: # collect bs prediction
-					decode_all[dial_name][side]['pred_bs'] = []
-					decode_all[dial_name][side]['pred_nlu'] = []
-					decode_all[dial_name][side]['ref_bs'] = []
-
-		# reference
-		decode_all[dial_name][side]['ref_word'].append( batch['ref']['word'][side][batch_idx] )
-		decode_all[dial_name][side]['ref_act'].append( batch['ref']['act'][side][batch_idx] )
-
-		# decode
-		decode_all[dial_name][side]['gen_word'].append( decode_batch['word_{}'.format(side)][batch_idx] )
-		if (side == 'usr' and config.usr_act_type == 'gen') or (side == 'sys' and config.sys_act_type == 'gen'): # gen act
-			decode_all[dial_name][side]['gen_act'].append( decode_batch['act_{}'.format(side)][batch_idx] )
-		else: # oracle act
-			decode_all[dial_name][side]['gen_act'].append( batch['ref']['act'][side][batch_idx] )
-
-		if side == 'sys':
-			decode_all[dial_name][side]['gen_bs'].append( decode_batch['full_bs'][batch_idx] )
-			if not config.oracle_dst: # collect bs prediction
-				decode_all[dial_name][side]['pred_bs'].append( dict2list(decode_batch['bs_pred'][batch_idx]) ) # dict
-				decode_all[dial_name][side]['pred_nlu'].append( dict2list(decode_batch['nlu_pred'][batch_idx]) ) # dict
-				decode_all[dial_name][side]['ref_bs'].append( dict2list(batch['ref']['dst']['bs'][batch_idx]) )
-
-
-def collect_dial_interact(decode_all, decode_batch, side, batch):
-	'''Collect decoded natural language, act sequences and belief state'''
-	dial_len, dial_name = batch['dial_len'], batch['dial_name']
-	assert len(decode_batch['word_{}'.format(side)]) == torch.sum(dial_len).item()
-	if (side == 'usr' and config.usr_act_type == 'gen') or (side == 'sys' and config.sys_act_type == 'gen'):
-		assert len(decode_batch['act_{}'.format(side)]) == torch.sum(dial_len).item() # batch_size
-	assert len(dial_len) == len(dial_name)
-
-	for dial_idx, (_len, _name) in enumerate(zip(dial_len, dial_name)):
-		start = torch.sum(dial_len[:dial_idx])
-		if _name not in decode_all:
-			decode_all[_name] = {'goal': dataset.all_data[_name]['goal']}
-
-		decode_all[_name][side] = {}
-		decode_all[_name][side]['dial_len'] = _len
-		decode_all[_name][side]['ref_word'] = decode_batch['lex_word_{}'.format(side)][start: start+_len] # put lex word here
-		decode_all[_name][side]['ref_act'] = batch['ref']['act'][side][start: start+_len]
-		decode_all[_name][side]['gen_word'] = decode_batch['word_{}'.format(side)][start: start+_len]
-
-		if (side == 'usr' and config.usr_act_type == 'gen') or (side == 'sys' and config.sys_act_type == 'gen'):
-			decode_all[_name][side]['gen_act'] = decode_batch['act_{}'.format(side)][start: start+_len]
-		else: # usr=oracle_act or sys=oracle_act/no_use
-			decode_all[_name][side]['gen_act'] = decode_all[_name][side]['ref_act']
-
-		if side == 'sys':
-			decode_all[_name][side]['gen_bs'] = decode_batch['bs'][start: start+_len]
-			if not config.oracle_dst: # collect bs prediction
-				decode_all[_name][side]['pred_bs'] = [ dict2list(bs_dict) for bs_dict in decode_batch['bs_pred'][start: start+_len] ]
-				decode_all[_name][side]['pred_nlu'] = [ dict2list(bs_dict) for bs_dict in decode_batch['bs_pred'][start: start+_len] ]
-				decode_all[_name][side]['ref_bs'] = [ dict2list(bs_dict) for bs_dict in decode_batch['bs_pred'][start: start+_len] ]
-
-
-def compute_fisher_matric(config, dataset):
-	model = Model(config, dataset)
-	model = model.cuda()
-	print('Load model in computing fisher')
-	model.loadModel(config.model_dir, config.load_epoch)
-
-	print('Computing Fisher Matrix')
-	model.train()
-	fisher, optpar = {}, {}
-	for n, p in model.named_parameters():
-		optpar[n] = torch.Tensor(p.cpu().data).cuda()
-		p.data.zero_()
-		fisher[n] = torch.Tensor(p.cpu().data).cuda()
-
-	src_dataset = DataLoader(config, load_src=True)
-	n_examples = 0
-	while True:
-		# get batch
-		batch_list = src_dataset.next_batch_list('train')
-		if batch_list == None:
-			break
-
-		for turn_idx, batch in enumerate(batch_list):
-			n_examples += 1
-			if turn_idx != 0:
-				if config.share_dial_rnn: assert batch['init_dial_rnn'] == None
-				if not config.share_dial_rnn: assert batch['init_dial_rnn']['usr'] == None and batch['init_dial_rnn']['sys'] == None
-				batch['init_dial_rnn'] = decode_batch['init_dial_rnn']
-
-			decode_batch = model(batch, turn_idx=turn_idx, mode='teacher_force')
-			loss, update_loss = model.get_loss(batch)
-			update_loss.backward(retain_graph=True)
-
-			for n, p in model.named_parameters():
-				if p.grad is not None:
-					fisher[n].data += p.grad.data ** 2
-			model.optimizer.zero_grad()
-			print('Done collect {} examples in fisher matrix'.format(n_examples), file=sys.stderr)
-
-	for name_f, _ in fisher.items():
-		fisher[name_f] /= n_examples
-
-	print('Done collect {} examples in fisher matrix'.format(n_examples))
-	return fisher, optpar
-	
-
 def trainIter(config, dataset, CT):
+	'''Training over epochs'''
 	if config.mode == 'finetune' and config.ft_method == 'ewc':
 		fisher, optpar = compute_fisher_matric(config, dataset)
 
@@ -392,6 +340,7 @@ def trainIter(config, dataset, CT):
 
 
 def test(config, dataset, CT):
+	'''Test the dialogue system against fixed test corpus'''
 	# load checkpoint
 	CT.loadModel(config.model_dir, config.load_epoch)
 
@@ -411,78 +360,8 @@ def test(config, dataset, CT):
 								word_result=config.usr_word_result, dst_result=config.usr_dst_result, tag='usr')
 
 
-def runRLOneEpoch(epoch_idx):
-	t0 = time.time()
-	update_count = 0 # count of rl update
-	while True:
-		if (update_count * config.rl_batch_size) >= config.rl_dial_one_epoch:
-			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0))
-			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0), file=sys.stderr)
-			break
-
-		# run rl
-		RL_LOSS = []
-		for i in range(config.rl_iterate_ratio):
-			# sample goals for interaction
-			dial_name_batch = dataset.next_rl_batch() # a list of dial name
-			if len(dial_name_batch) != config.rl_batch_size:
-				dataset.init_rl()
-				dial_name_batch = dataset.next_rl_batch()
-
-			gen_dial_batch = model.interact(beam_search=False, dial_name_batch=dial_name_batch)
-
-			# check maximum act seq of each dialogue
-			max_act_len_batch = model.check_max_gen_act_seq(gen_dial_batch)
-
-			if config.reward_type == 'turn_reward':
-				avg_sys_r, avg_usr_r = model.get_turn_reward(gen_dial_batch)
-			else:
-				avg_sys_r, avg_usr_r = model.get_success_reward(gen_dial_batch, evaluator)
-
-			rl_loss = model.get_rl_loss(gen_dial_batch, 'sys')
-			grad_norm = model.update(rl_loss, 'rl_sys')
-
-			if config.rl_update_usr and epoch_idx < config.rl_usr_epoch:
-				rl_usr_loss = model.get_rl_loss(gen_dial_batch, 'usr')
-				grad_usr_norm = model.update(rl_usr_loss, 'rl_usr')
-			else:
-				rl_usr_loss, grad_usr_norm = 0, 0
-
-			update_count += 1
-			gpu = torch.cuda.max_memory_allocated() // 1000000 
-			print('idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f} | gpu: {} | max_act_len: {} -> avg: {}'.format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm, gpu, max_act_len_batch, np.mean(max_act_len_batch)))
-
-			# trace generated dialogues
-			# for gen_dial in gen_dial_batch:
-			# 	for i, (act_usr, act_sys, word_usr, word_sys) in \
-			# 			enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
-			# 		print('At side turn: {}'.format(i))
-			# 		print('USR: {} ({})'.format(word_usr, act_usr))
-			# 		print('SYS: {} ({})'.format(word_sys, act_sys))
-			del gen_dial_batch
-			del avg_sys_r, avg_usr_r
-			del rl_loss, rl_usr_loss
-			del grad_norm, grad_usr_norm
-			torch.cuda.empty_cache()
-
-		# run sl for one batch if iterate between sl and rl
-		if config.rl_iterate:
-			batch_list = dataset.next_batch_list('train')
-			grad_list = []
-			if batch_list == None:
-				dataset.init()
-				batch_list = dataset.next_batch_list('train')
-			runBatchDialogue(batch_list, None, 'train', 'teacher_force', None, grad_list) # update by sl
-			print('sl grad: {:.2f}'.format(np.mean(grad_list)))
-			print('sl grad: {:.2f}'.format(np.mean(grad_list)), file=sys.stderr)
-			del batch_list
-
-		if update_count == 1:
-			t1 = time.time()-t0
-			print('update once: {:.1f}, estimate time rl one epoch: {:.1f}'.format(t1, config.rl_dial_one_epoch/config.rl_batch_size*t1))
-
-
 def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_result=None, dst_result=None, scan_examples=False, tag=None):
+	'''Test the dialogue agent against the user simulator'''
 	beam_search = False
 	# eval mode
 	CT.eval() # turn off dropout
