@@ -1,5 +1,5 @@
 '''
-	The evaluation script is adapted from the following two files:
+	The evaluation script is adapted from the following files:
 	1. https://github.com/budzianowski/multiwoz/blob/master/evaluate.py
 	2. https://github.com/thu-spmi/damd-multiwoz/blob/master/eval.py
 '''

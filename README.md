@@ -1,6 +1,6 @@
 # Transferable Dialogue Systems and User Simulators
 
-NB: The codebase is not completely clean and still in the process of refactoring. This won't affect the final results.
+NB: The codebase is not completely clean and still in the process of refactoring. This would not affect the produced results.
 
 ## Requirements
 python3.6 and the packages in `requirements.txt`. Install them via virtual environment:
