@@ -34,4 +34,4 @@ python main.py --mode='test' --model_dir=$model_dir \
 					     --embed_size=$dim --hidden_size=$dim \
 				    	 --oracle_dst=$oracle_dst --attn_prev_bs=$prev_bs \
 				    	 --corpus_word_result=$corpus_word --corpus_act_result=$corpus_act --corpus_dst_result=$corpus_dst \
-					     --usr_word_result=$usr_word --usr_act_result=$usr_act --usr_dst_result=$usr_dst
+					     --usr_word_result=$usr_word --usr_act_result=$usr_act --usr_dst_result=$usr_dst > 123.txt
