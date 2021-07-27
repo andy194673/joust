@@ -215,9 +215,10 @@ def runRLOneEpoch(epoch_idx):
 def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 	'''Train both agents one epoch using supervised learning'''
 	if dType == "train":
-		print("Start training epoch: {}...".format(epoch_idx))
+		print("\nStart training epoch: {}".format(epoch_idx))
 	else:
-		print("Start evaluation against {} set...".format(dType))
+		if mode == "teacher_force": print("\nStart evaluation against {} set".format(dType))
+		else: print("\nStart generation against {} set".format(dType))
 
 	t0 = time.time()
 	LOSS = {
@@ -237,8 +238,8 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 
 		runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list)
 		if i == 1 and epoch_idx == 0 and dType == 'train':
-			print('{} dialogues takes {:.1f} sec, estimated time for an epoch: {:.1f}'
-				  .format(config.batch_size, time.time()-t0, len(dataset.data[dType])/config.batch_size*(time.time()-t0) ), file=sys.stderr)
+			print('{} dialogues takes {:.1f} sec, estimated time for an epoch ({}): {:.1f}'
+				  .format(config.batch_size, time.time()-t0, n_data, n_data/config.batch_size*(time.time()-t0) ), file=sys.stderr)
 
 	if mode == 'teacher_force':
 		n = LOSS['count']
@@ -368,7 +369,7 @@ def test(config, dataset, CT):
 
 def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_result=None, dst_result=None, scan_examples=False, tag=None):
 	'''Test the dialogue agent against the user simulator'''
-	print("Start agent-agent interaction based on validation goals... (results of DST and NLG are 0 here as no references)")
+	print("Start agent-agent generation based on validation goals... (results of DST and NLG are 0 here as no references)")
 	beam_search = False
 	# eval mode
 	CT.eval() # turn off dropout

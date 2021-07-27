@@ -41,7 +41,6 @@ def validate_args(args):
         assert args.entity_provide_reward >= 0 and args.no_entity_provide_reward <= 0
         assert args.no_repeat_ask_reward >= 0 and args.repeat_ask_reward <= 0
         assert args.no_miss_answer_reward >= 0 and args.miss_answer_reward <= 0
-        assert args.correct_domain_reward >= 0 and args.wrong_domain_reward <= 0
         assert args.usr_no_repeat_info_reward >= 0 and args.usr_repeat_info_reward <= 0
         assert args.usr_no_repeat_ask_reward >= 0 and args.usr_repeat_ask_reward <= 0
         assert args.usr_no_miss_answer_reward >= 0 and args.usr_miss_answer_reward <= 0
@@ -132,7 +131,7 @@ def get_config():
 
     # user simulator reward
     parser.add_argument('--rl_update_usr', type=str2bool, default=True, help='whether or not to update the user during rl')
-    parser.add_argument('--rl_usr_epoch', type=int, default=5, help='update usr in how many epochs')
+    parser.add_argument('--rl_usr_epoch', type=int, default=10, help='update usr in how many epochs')
     parser.add_argument('--usr_repeat_info_reward', type=float, default=0,
                         help='negative reward to penalise repetitive informs')
     parser.add_argument('--usr_no_repeat_info_reward', type=float, default=0,

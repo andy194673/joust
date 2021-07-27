@@ -381,54 +381,6 @@ class Model(nn.Module):
 		return batch
 
 
-	def get_usr_transit_domain_reward(self, gen_dial, print_log=True):
-		'''
-		a good domain transit for usr needs to meet two conditions:
-			1) the system provides an entity in previous domain
-			2) the system has not provided an entity for current domain
-		'''
-		# trace usr turn domain
-		domain_prev = 'none'
-		done_domain = set()
-		reward = []
-		for side_idx, (act_usr, act_sys) in enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'])):
-
-			turn_domain = decide_turn_domain(act_usr, '', domain_prev)
-			r = 0 # 0 for non-transit turn
-			if side_idx != 0 and turn_domain != domain_prev: # domain transit happens
-				if domain_prev in done_domain and turn_domain not in done_domain: # good transit
-					r = self.config.usr_correct_transit_reward # (+)
-				else:
-					r = self.config.usr_wrong_transit_reward # (-)
-			if turn_domain not in ['restaurant', 'hotel', 'attraction', 'train', 'taxi']: # dont care transit to other domains
-				r = 0
-			reward.append(r)
-
-			act = act_usr + ' ' + act_sys # name might be informed by usr itself
-			if 'name' in act:
-				done_domain.add(turn_domain)
-#				for slot in act.split():
-#					if 'name' in slot:
-#						domain = slot.split('_')[0]
-#						done_domain.add(domain)
-#						break
-			elif 'trainID' in act:
-				done_domain.add('train')
-			elif 'taxi_type' in act:
-				done_domain.add('taxi')
-			elif 'act_offerbooked' in act_sys:
-				done_domain.add(turn_domain)
-			domain_prev = turn_domain
-
-		# trace reward
-		if print_log:
-			print('usr transit - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, usr transit r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
-		return reward
-
-
 	def get_usr_follow_goal_reward(self, gen_dial, print_log=True):
 		goal = gen_dial['goal']
 		reward = []
@@ -574,48 +526,6 @@ class Model(nn.Module):
 				print('{}, usr miss answer r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
-
-	def get_domain_reward(self, gen_dial, print_log=True):
-		'''
-		Description:
-			the system will get a positive reward (+) if the response is in the same domain as usr query, otherwise, negative reward (-)
-		Return:
-			a list (len=dial_len) of real number
-		'''
-		# trace usr turn domain
-		domain_prev = 'none'
-		domain_history_usr = []
-		for act_usr in gen_dial['act_usr']:
-			turn_domain = decide_turn_domain(act_usr, '', domain_prev)
-			domain_history_usr.append(turn_domain)
-			domain_prev = turn_domain
-
-		# trace sys turn domain
-		domain_prev = 'none'
-		domain_history_sys = []
-		for act_sys in gen_dial['act_sys']:
-			turn_domain = decide_turn_domain('', act_sys, domain_prev)
-			domain_history_sys.append(turn_domain)
-			domain_prev = turn_domain
-
-		reward = []
-		for domain_usr, domain_sys in zip(domain_history_usr, domain_history_sys):
-			if domain_sys == domain_usr:
-				r = self.config.correct_domain_reward
-			else:
-				r = self.config.wrong_domain_reward
-			if domain_sys == 'general':
-				r = 0
-			reward.append(r)
-				
-		# trace reward
-		if print_log:
-			print('sys domain - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, sys domain r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
-		return reward
-		
 
 	def get_entity_provide_reward(self, gen_dial, print_log=True):
 		'''
@@ -785,7 +695,6 @@ class Model(nn.Module):
 				provide_reward = [0 for _ in range(n_side)]
 				repeat_reward = [0 for _ in range(n_side)]
 				answer_reward = [0 for _ in range(n_side)]
-				domain_reward = [0 for _ in range(n_side)]
 				usr_repeat_info = [0 for _ in range(n_side)]
 				usr_repeat_ask  = [0 for _ in range(n_side)]
 				usr_miss_answer = [0 for _ in range(n_side)]
@@ -793,13 +702,12 @@ class Model(nn.Module):
 				provide_reward = self.get_entity_provide_reward(gen_dial) # a list of dial len
 				repeat_reward = self.get_repeat_ask_reward(gen_dial)
 				answer_reward = self.get_miss_answer_reward(gen_dial)
-				domain_reward = [0 for _ in range(n_side)]
 				usr_repeat_info = self.get_usr_repeat_info_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 				usr_repeat_ask  = self.get_usr_repeat_ask_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 				usr_miss_answer = self.get_usr_miss_answer_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 
 			# total reward
-			sys_reward = [ r1+r2+r3+r4 for r1, r2, r3, r4 in zip(provide_reward, repeat_reward, answer_reward, domain_reward) ]
+			sys_reward = [ r1+r2+r3+r4 for r1, r2, r3 in zip(provide_reward, repeat_reward, answer_reward) ]
 			usr_reward = [ r1+r2+r3 for r1, r2, r3 in zip(usr_repeat_info, usr_repeat_ask, usr_miss_answer) ]
 			gen_dial['sys_reward'], gen_dial['usr_reward'] = sys_reward, usr_reward
 			avg_sys_r += np.mean(gen_dial['sys_reward'])
