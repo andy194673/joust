@@ -1,13 +1,15 @@
 import os
-import sys
 import json
 import random
+
 
 def key2str(key):
 	return '_'.join(sorted(list(key)))
 
+
 def str2key(s):
 	return tuple(sorted(s.split('_')))
+
 
 def print_multi_stat(multi):
 	for idx, dial_domain in enumerate(sorted(multi.keys())):
@@ -15,14 +17,16 @@ def print_multi_stat(multi):
 		dial_domain = '_'.join(sorted(list(dial_domain)))
 		print('{}: {} -> train: {}, val: {}, test: {}'.format(idx, dial_domain, len(dials['train']), len(dials['val']), len(dials['test'])))
 
+
 def randomPickKey(dic, size):
 	dic = list(dic.items())
 	random.shuffle(dic)
 	dic = dict(dic[:size])
 	return dic
 
+
 def write(multi, data_size, single):
-	write_dir = 'data/MultiWOZ/single_to_multi/'
+	write_dir = 'data/single_to_multi/'
 	all_multi = {'train': {}, 'val': {}, 'test': {}}
 	for idx, dial_domain in enumerate(sorted(multi.keys())):
 		if 'train' not in dial_domain and 'taxi' not in dial_domain:
@@ -64,21 +68,14 @@ def write(multi, data_size, single):
 		with open('{}/{}_dials.json'.format(target_dir, dType), 'w') as f:
 			json.dump(all_multi[dType], f, indent=4, sort_keys=True)
 
-# --------------------------------------------------------------------------------------
-# original split
-#train_dial = json.load(open('data/MultiWOZ/self-play-fix/train_dials.json'))
-#val_dial = json.load(open('data/MultiWOZ/self-play-fix/val_dials.json'))
-#test_dial = json.load(open('data/MultiWOZ/self-play-fix/test_dials.json'))
-train_dial = json.load(open('data/MultiWOZ/self-play-fix2/train_dials.json'))
-val_dial = json.load(open('data/MultiWOZ/self-play-fix2/val_dials.json'))
-test_dial = json.load(open('data/MultiWOZ/self-play-fix2/test_dials.json'))
 
-all_data = json.load(open('data/MultiWOZ/annotated_user_da_with_span_full_patchName.json'))
-print('done loading')
+print('Loading data...')
+train_dial = json.load(open('data/process_data/train_dials.jso'))
+val_dial = json.load(open('data/process_data/val_dials.jso'))
+test_dial = json.load(open('data/process_data/test_dials.jso'))
+all_data = json.load(open('data/raw_data/annotated_user_da_with_span_full_patchName.json'))
 
 domains = ['restaurant', 'hotel', 'attraction', 'train', 'taxi', 'police', 'hospital']
-#single = {domain: [] for domain in domains}
-#single = {domain: {'train': [], 'val': [], 'test': []} for domain in domains}
 single = {domain: {'train': {}, 'val': {}, 'test': {}} for domain in domains}
 multi = {}
 not_used = []
@@ -130,7 +127,7 @@ print('not used dials: {}'.format(len(not_used)))
 print('--------------------------------------------')
 # done, start write out and analysis
 
-write_out_dir = 'data/MultiWOZ/single_to_multi'
+write_out_dir = 'data/single_to_multi'
 c, C = {'train': 0, 'val': 0, 'test': 0}, {'train': 0, 'val': 0, 'test': 0}
 base = {'train': {}, 'val': {}, 'test': {}}
 print('Single domain dialogues')
@@ -154,13 +151,10 @@ os.makedirs('{}/all_single'.format(write_out_dir), exist_ok=True)
 for dType in ['train', 'val', 'test']:
 	with open('{}/all_single/{}_dials.json'.format(write_out_dir, dType), 'w') as f:
 		json.dump(base[dType], f, indent=4, sort_keys=True)
-#sys.exit(1)
-
 
 print('Original multi-domain data distribution without merging and augmentation with single dialogus')
 print_multi_stat(multi)
 print('--------------------------------------------')
-#sys.exit(1)
 
 # merge w/i w/o taxi domains
 for idx, (dial_domain, dials) in enumerate(multi.items()):
@@ -174,70 +168,12 @@ for idx, (dial_domain, dials) in enumerate(multi.items()):
 print('after merging taxi into non-taxi')
 print_multi_stat(multi)
 print('--------------------------------------------')
-#sys.exit(1)
 
 # write out all comb
-for data_size in [10000, 500, 300, 100]:
+# for data_size in [10000, 500, 300, 100]:
+for data_size in [100]:
 	print('{} multi'.format(data_size))
 	write(multi, data_size, {})
-#	print_multi_stat(multi)
 
 	print('{} multi + single'.format(data_size))
 	write(multi, data_size, single)
-#	print_multi_stat(multi)
-#	input('press...')
-
-
-##### OLD CODE #####
-## NOTE: ADD SINGLE TO MULTI, back
-#multi_add_single = {}
-#for domains in multi:
-#	dial2meta = multi[domains]['train']
-#	multi_add_single[domains] = {}
-#	multi_add_single[domains].update(dial2meta)
-#	print('before add single, {} -> # {} dials, {} dials'.format(domains, len(dial2meta), len(multi_add_single[domains])))
-#	for domain in domains:
-#		for idx, (dial_name, meta) in enumerate(single[domain]['train'].items()):
-#			if idx == 200:
-#				break
-##			assert dial_name not in dials
-##			dial2meta[dial_name] = meta
-#			assert dial_name not in multi_add_single[domains]
-#			multi_add_single[domains][dial_name] = meta
-#	print('after add single, {} -> # {} dials, {} dials'.format(domains, len(dial2meta), len(multi_add_single[domains])))
-#print('--------------------------------------------')
-##sys.exit(1)
-
-#overlap_domains = ['attraction_hotel', 'hotel_restaurant', 'attraction_restaurant'] # w/i or w/o taxi
-#overlap = {'{}___taxi'.format(d): {'train': {}, 'val': {}, 'test': {}} for d in overlap_domains}
-#print('Multi domain dialogues')
-#for idx, (domains, dials) in enumerate(multi.items()):
-#	domains = '_'.join(sorted(list(domains)))
-#	print('{}: {} -> train: {}, val: {}, test: {}'.format(idx, domains, len(dials['train']), len(dials['val']), len(dials['test'])))
-##	os.makedirs('{}/{}'.format(write_out_dir, domains), exist_ok=True)
-#	os.makedirs('{}/{}_2'.format(write_out_dir, domains), exist_ok=True) # back
-#	for dType in ['train', 'val', 'test']:
-#		C[dType] += len(dials[dType])
-#
-#		# write out multi
-##		with open('{}/{}/{}_dials.json'.format(write_out_dir, domains, dType), 'w') as f:
-#		with open('{}/{}_2/{}_dials.json'.format(write_out_dir, domains, dType), 'w') as f: # back
-#			json.dump(dials[dType], f, indent=4, sort_keys=True)
-#
-#	if domains.replace('_taxi', '') in overlap_domains:
-#		for dType in ['train', 'val', 'test']:
-#			overlap['{}___taxi'.format(domains.replace('_taxi', ''))][dType].update(dials[dType])
-#
-#print('multi -> train: {}, val: {}, test: {}'.format(C['train'], C['val'], C['test']))
-#print('--------------------------------------------')
-#for idx, (domains, dials) in enumerate(overlap.items()):
-#	print('{}: {} -> train: {}, val: {}, test: {}'.format(idx, domains, len(dials['train']), len(dials['val']), len(dials['test'])))
-##	os.makedirs('{}/{}'.format(write_out_dir, domains), exist_ok=True)
-#	os.makedirs('{}/{}_2'.format(write_out_dir, domains), exist_ok=True) # back
-#
-#	# write out __taxi
-#	for dType in ['train', 'val', 'test']:
-##		with open('{}/{}/{}_dials.json'.format(write_out_dir, domains, dType), 'w') as f:
-#		with open('{}/{}_2/{}_dials.json'.format(write_out_dir, domains, dType), 'w') as f: # back
-#			json.dump(dials[dType], f, indent=4, sort_keys=True)
-#	

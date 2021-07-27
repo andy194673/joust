@@ -1,13 +1,12 @@
 #!/bin/bash
 # prepare single-domain to multi-domain data
-mkdir data/single_to_multi/
-#python3 utils/splitSingleMultiDomain.py > info/split_single_to_multi_all.log
+mkdir -p data/single_to_multi/
+#python3 utils/split_single_multi_data.py > info/split_single_to_multi_all.log
 #echo 'Done'
 #exit
 
 
 # prepare domain transfer data
-#rm -r data/MultiWOZ/domain_transfer
-#mkdir data/MultiWOZ/domain_transfer
-#python3 utils/splitUnseenDomain.py > info/split_domain_transfer.log
+mkdir -p data/domain_transfer
+#python3 utils/split_domain_transfer_data.py > info/split_domain_transfer.log
 #echo 'Done'
