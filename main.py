@@ -222,10 +222,9 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		'count': 0}
 	n = 0
 	grad_list, decode_all = [], dict()
-	data_len = len(dataset.data[dType])
-	n_batch = data_len // config.batch_size if dType == 'train' else data_len // config.eval_batch_size
-	for _ in tqdm(range(n_batch)):
-	# while True:
+	n_data = len(dataset.data[dType])
+	n_batch = n_data // config.batch_size if dType == 'train' else n_data // config.eval_batch_size
+	for _ in tqdm(range(n_batch)): # stderr
 		# get a batch of dialogues
 		batch_list = dataset.next_batch_list(dType)
 		if batch_list == None:
@@ -236,12 +235,12 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		if n == 1 and epoch_idx == 0 and dType == 'train':
 			print('{} dialogues takes {:.1f} sec, estimated time for an epoch: {:.1f}'
 				  .format(config.batch_size, time.time()-t0, len(dataset.data[dType])/config.batch_size*(time.time()-t0) ), file=sys.stderr)
-		print("batch list idx:", n, file=sys.stderr)
 
 	if mode == 'teacher_force':
 		n = LOSS['count']
 		grad_norm = np.mean(grad_list) if len(grad_list) > 0 else 0
-		print('{} Loss Epoch: {} | Word usr: {:.3f}, sys: {:.3f} | Act usr: {:.3f}, sys: {:.3f} | Dst slot: {:.3f}, value: {:.3f} | grad: {:.2f} | time: {:.1f}'.format(dType, epoch_idx, LOSS['word_usr']/n, LOSS['word_sys']/n, LOSS['act_usr']/n, LOSS['act_sys']/n, LOSS['dst_slot']/n, LOSS['dst_value']/n, grad_norm, time.time()-t0))
+		print('{} Loss Epoch: {} | Word usr: {:.3f}, sys: {:.3f} | Act usr: {:.3f}, sys: {:.3f} | Dst slot: {:.3f}, value: {:.3f} | grad: {:.2f} | time: {:.1f}'
+			  .format(dType, epoch_idx, LOSS['word_usr']/n, LOSS['word_sys']/n, LOSS['act_usr']/n, LOSS['act_sys']/n, LOSS['dst_slot']/n, LOSS['dst_value']/n, grad_norm, time.time()-t0))
 
 		total_loss = 0
 		for k, v in LOSS.items():
@@ -261,7 +260,8 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 			joint_acc, sv_acc, slot_acc = evaluator.eval_dst(decode_all)
 		else: # oracle dst
 			joint_acc, sv_acc, slot_acc = 1, 1, 1
-		print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | reqt: {:.2f} ({}) | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'.format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, reqt_acc, reqt_total, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
+		print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | reqt: {:.2f} ({}) | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'
+			  .format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, reqt_acc, reqt_total, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
 
 		# write output sample
 		if dType == 'test' and config.mode == 'test':

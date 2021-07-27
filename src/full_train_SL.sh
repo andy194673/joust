@@ -6,19 +6,18 @@ oracle_dst=false; prev_bs=true
 #oracle_dst=true; prev_bs=false # use this for oracle dst setup
 
 ###### train SL networks #######
-#model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/pretrain/1704'
+model_dir='checkpoint/pretrain/'$model_name
+log='log/pretrain/'$model_name'.log'
+python main.py --mode='pretrain' --model_dir=$model_dir \
+				       --batch_size=$batch_size --embed_size=$dim --hidden_size=$dim \
+				       --oracle_dst=$oracle_dst --attn_prev_bs=$prev_bs \
+				       --epoch=30 --no_improve_epoch=10 > $log
+exit
+
+
 # best rl networks
 model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5430' # provide this one
 #model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5457'
-
-
-#model_dir='checkpoint/pretrain/'$model_name
-#log='log/pretrain/'$model_name'.log'
-#python main.py --mode='pretrain' --model_dir=$model_dir \
-#				       --batch_size=$batch_size --embed_size=$dim --hidden_size=$dim \
-#				       --oracle_dst=$oracle_dst --attn_prev_bs=$prev_bs \
-#				       --epoch=30 --no_improve_epoch=10 > $log
-#exit
 
 ######## test SL networks #######
 # results of corpus interaction
@@ -34,4 +33,4 @@ python main.py --mode='test' --model_dir=$model_dir \
 					     --embed_size=$dim --hidden_size=$dim \
 				    	 --oracle_dst=$oracle_dst --attn_prev_bs=$prev_bs \
 				    	 --corpus_word_result=$corpus_word --corpus_act_result=$corpus_act --corpus_dst_result=$corpus_dst \
-					     --usr_word_result=$usr_word --usr_act_result=$usr_act --usr_dst_result=$usr_dst > 123.txt
+					     --usr_word_result=$usr_word --usr_act_result=$usr_act --usr_dst_result=$usr_dst
