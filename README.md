@@ -10,7 +10,7 @@ python3.6 and the packages in `requirements.txt`. Install them via virtual envir
 >>> pip install -r requirements.txt
 ```
 
-##Full Training Experiments
+## Full Training Experiments
 Pre-process the raw MultiWOZ data
 ```console
 >>> bash src/prepare_data.sh
@@ -21,19 +21,19 @@ Training from scratch using Supervised Learning
 >>> bash src/train-SL.sh [your_sl_model_name]
 ```
 
-###Continued training using Reinforcement Learning
+### Continued training using Reinforcement Learning
 ```console
 >>> bash src/train-RL.sh [your_sl_model_name] [your_rl_model_name]
 ```
 
-###Testing your model
+### Testing your model
 Simply run...
 ```console
 >>> bash src/xxx.sh
 ```
 - mode: "test"
 
-###Test the provided model
+### Test the provided model
 We provide a trained model to reproduce the benchmark result reported in the paper (Table2).
 
 First, unzip the model file by
@@ -53,7 +53,7 @@ will be stored in the folders `corpus_interact_output/` and `user_interact_outpu
 Note that the produced results by this model is slightly different to the
 reported numbers (e.g., 95.6 vs 96.0) as they are averaged by three runs.
 
-###Create transfer learning data
+### Create transfer learning data
 ```console
 >>> bash src/prepare_data_transfer_learning.sh
 ```
