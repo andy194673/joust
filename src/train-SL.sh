@@ -23,4 +23,5 @@ python main.py --mode='pretrain' --model_dir=$model_dir \
 				       --test_path=$tmp/data/MultiWOZ/self-play-fix2/test_dials.json \
 				       --word2count_path=$tmp/data/MultiWOZ/self-play-fix2/word2count.json \
 				       --act2count_path=$tmp/data/MultiWOZ/self-play-fix2/act2count.json \
+				       --seed=1 \
 				       --epoch=30 --no_improve_epoch=10 #> $log
