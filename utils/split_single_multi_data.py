@@ -169,11 +169,8 @@ print('after merging taxi into non-taxi')
 print_multi_stat(multi)
 print('--------------------------------------------')
 
-# write out all comb
+# write out all multi-domain combination
 # for data_size in [10000, 500, 300, 100]:
 for data_size in [100]:
 	print('{} multi'.format(data_size))
 	write(multi, data_size, {})
-
-	print('{} multi + single'.format(data_size))
-	write(multi, data_size, single)
