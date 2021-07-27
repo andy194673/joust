@@ -452,12 +452,11 @@ class Model(nn.Module):
 			for slot in info_slots:
 				informed_slot_set.add(slot)
 
-		# trace reward
-		if print_log:
-			print('usr repeat info - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, usr repeat info r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
+		# # trace reward
+		# if print_log:
+		# 	print('usr repeat info - dial name:', gen_dial['dial_name'])
+		# 	for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
+		# 		print('{}, usr repeat info r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
 
@@ -480,12 +479,11 @@ class Model(nn.Module):
 				r = self.config.usr_no_repeat_ask_reward
 			reward.append(r)
 
-		# trace reward
-		if print_log:
-			print('usr repeat ask - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, usr repeat ask r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
+# 		# trace reward
+# 		if print_log:
+# 			print('usr repeat ask - dial name:', gen_dial['dial_name'])
+# 			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
+# 				print('{}, usr repeat ask r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
 
@@ -518,12 +516,11 @@ class Model(nn.Module):
 				r = self.config.usr_miss_answer_reward
 			reward.append(r)
 
-		# trace reward
-		if print_log:
-			print('usr miss answer - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, usr miss answer r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
+# 		# trace reward
+# 		if print_log:
+# 			print('usr miss answer - dial name:', gen_dial['dial_name'])
+# 			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
+# 				print('{}, usr miss answer r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
 
@@ -584,12 +581,11 @@ class Model(nn.Module):
 			reward.append(w*r)
 
 		# trace reward
-		if print_log:
-			print('sys provide - dial name:', gen_dial['dial_name'])
-			print('name provied:', domain_entityProvided-set(['taxi', 'police', 'hospital', 'general']))
-			for side_idx, (w, r, usr_act, sys_act, turn_domain, usr_word, sys_word) in enumerate(zip(weight, reward, gen_dial['act_usr'], gen_dial['act_sys'], domain_history, gen_dial['word_usr'], gen_dial['word_sys'])):
-#				if r != 0:
-				print('{}, w: {}, sys r: {}, d: {} | {} -> {}'.format(side_idx, w, r, turn_domain, usr_act, sys_act))
+		# if print_log:
+		# 	print('sys provide - dial name:', gen_dial['dial_name'])
+		# 	print('name provied:', domain_entityProvided-set(['taxi', 'police', 'hospital', 'general']))
+		# 	for side_idx, (w, r, usr_act, sys_act, turn_domain, usr_word, sys_word) in enumerate(zip(weight, reward, gen_dial['act_usr'], gen_dial['act_sys'], domain_history, gen_dial['word_usr'], gen_dial['word_sys'])):
+		# 		print('{}, w: {}, sys r: {}, d: {} | {} -> {}'.format(side_idx, w, r, turn_domain, usr_act, sys_act))
 		return reward
 
 
@@ -619,12 +615,11 @@ class Model(nn.Module):
 				r = self.config.no_repeat_ask_reward
 			reward.append(r)
 
-		# trace reward
-		if print_log:
-			print('sys repeat - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, sys ask r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
+		# # trace reward
+		# if print_log:
+		# 	print('sys repeat - dial name:', gen_dial['dial_name'])
+		# 	for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
+		# 		print('{}, sys ask r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
 
@@ -641,12 +636,11 @@ class Model(nn.Module):
 				r = self.config.no_miss_answer_reward
 			reward.append(r)
 
-		# trace reward
-		if print_log:
-			print('sys answer - dial name:', gen_dial['dial_name'])
-			for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
-#				if r != 0:
-				print('{}, sys ans r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
+		# # trace reward
+		# if print_log:
+		# 	print('sys answer - dial name:', gen_dial['dial_name'])
+		# 	for side_idx, (r, usr_act, sys_act) in enumerate(zip(reward, gen_dial['act_usr'], gen_dial['act_sys'])):
+		# 		print('{}, sys ans r: {}, | {} -> {}'.format(side_idx, r, usr_act, sys_act))
 		return reward
 
 
@@ -721,16 +715,15 @@ class Model(nn.Module):
 			# calculate one dialogue per call
 			gen_dial_batch = [gen_dial]
 			
-			# trace generated dialogues
-			if True:
-				for gen_dial in gen_dial_batch:
-					print('dial_name:', gen_dial['dial_name'])
-					for i, (act_usr, act_sys, word_usr, word_sys) in \
-							enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
-						print('At side turn: {}'.format(i))
-						print('USR: {} ({})'.format(word_usr, act_usr))
-						print('SYS: {} ({})'.format(word_sys, act_sys))
-#					input('press...')
+			# # trace generated dialogues
+			# if True:
+			# 	for gen_dial in gen_dial_batch:
+			# 		print('dial_name:', gen_dial['dial_name'])
+			# 		for i, (act_usr, act_sys, word_usr, word_sys) in \
+			# 				enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
+			# 			print('At side turn: {}'.format(i))
+			# 			print('USR: {} ({})'.format(word_usr, act_usr))
+			# 			print('SYS: {} ({})'.format(word_sys, act_sys))
 	
 			# form dummy batch
 			batch = {}
@@ -820,7 +813,7 @@ class Model(nn.Module):
 								bs[domain]['semi'][slot] = goal[domain]['info'][slot]
 							elif 'book' in goal[domain] and slot in goal[domain]['book']: # not every goal has book
 								bs[domain]['book'][slot] = goal[domain]['book'][slot]
-							else: # imperfect simulated usr might say something not in goal, trace the errors
+							else: # imperfect simulated usr might say something not in goal
 								extra_slot[batch_idx] += 1
 								bs[domain][constraint][slot] = 'dont care'
 
@@ -848,7 +841,7 @@ class Model(nn.Module):
 					value = goal[domain]['info'][slot]
 				elif 'book' in goal[domain] and slot in goal[domain]['book']: # not every goal has book
 					value = goal[domain]['book'][slot]
-				else: # imperfect simulated usr might say something not in goal, trace the errors
+				else: # imperfect simulated usr might say something not in goal
 					value = self.beyond_goal_or_belief(domain, slot, delex_sent)
 				lex_sent.append(str(value))
 			else: # normal word

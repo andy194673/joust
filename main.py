@@ -273,14 +273,17 @@ def trainIter(config, dataset, CT):
 
 	# test the model before finetune or rl
 	if config.mode in ['finetune', 'rl']:
-		print('Load model')
+		print("Load pre-trained model from: {}".format(config.model_dir))
 		CT.loadModel(config.model_dir, config.load_epoch)
+
 		if config.mode == 'finetune' and config.ft_method == 'ewc':
 			CT.fisher = fisher
 			CT.optpar = optpar
-		print('Test before doing finetune or rl')
-		with torch.no_grad():
-			test(config, dataset, CT) # check performance before doing finetune or rl
+
+		# TODO: uncomment here
+		# print('Test before doing finetune or rl')
+		# with torch.no_grad():
+		# 	test(config, dataset, CT)
 	print('-------------------------------------------------------------------------')
 
 	best_score = -100
@@ -355,7 +358,7 @@ def test(config, dataset, CT):
 
 def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_result=None, dst_result=None, scan_examples=False, tag=None):
 	'''Test the dialogue agent against the user simulator'''
-	print("Start agent-agent generation based on validation goals... (results of DST and NLG are 0 here as no references)")
+	print("\nStart agent-agent interaction based on validation goals... (results of DST and NLG are 0 here as no references)")
 	beam_search = False
 	# eval mode
 	CT.eval() # turn off dropout
@@ -418,10 +421,8 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 	score = 0.5*(success+match)+bleu_sys
 
 	# like bleu, no reference for dst during interaction
-	joint_acc, sv_acc, slot_acc = 0,0,0
-	epoch_idx = 'usr' if tag == 'usr' else 'full_usr'
-	print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | reqt: {:.2f} ({}) | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'
-		  .format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, reqt_acc, reqt_total, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
+	print('{} Eval {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'
+		  .format(dType, "agent-agent", score, success, match, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
 
 	# write samples
 	if config.mode == 'test' and act_result != None and word_result != None and dst_result != None:
