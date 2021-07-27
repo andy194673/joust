@@ -3,71 +3,65 @@ import json
 
 
 def write_sample(decode_all, src, epoch_idx, sample_file, record, reqt_record, res, reward):
-    '''Method to dump model generation'''
-    def two_digits(x):
-        if x < 10:
-            return '0' + str(x)
-        else:
-            return str(x)
+	'''Method to dump model generation'''
+	def two_digits(x):
+		if x < 10:
+			return '0' + str(x)
+		else:
+			return str(x)
 
-    epoch_idx = 'Epoch-{}'.format(epoch_idx)
-    out_f = sample_file
-    if os.path.exists(out_f):
-        with open(out_f) as f:
-            sample = json.load(f)
-    else:
-        sample = {}
+	epoch_idx = 'Epoch-{}'.format(epoch_idx)
+	out_f = sample_file
+	if os.path.exists(out_f):
+		with open(out_f) as f:
+			sample = json.load(f)
+	else:
+		sample = {}
 
-    # pairwise ref and decoded str in order
-    sample[epoch_idx] = {}
-    for dial_idx, dial_name in enumerate(sorted(decode_all.keys())):
-        if dial_idx > config.print_sample:
-            break
+	# pairwise ref and decoded str in order
+	sample[epoch_idx] = {}
+	for dial_idx, dial_name in enumerate(sorted(decode_all.keys())):
+		if dial_idx > config.print_sample:
+			break
+		dial = decode_all[dial_name]
+		sample[epoch_idx][dial_name] = {}
 
-        dial = decode_all[dial_name]
-        sample[epoch_idx][dial_name] = {}
+		if src == 'dst':
+			for i, (pred_nlu, pred_bs, ref_bs) in enumerate(zip(dial['sys']['pred_nlu'], dial['sys']['pred_bs'], dial['sys']['ref_bs'])):
+				idx_sys = two_digits(2 * i + 1)
+				sample[epoch_idx][dial_name]['{}-nlu({})'.format(idx_sys, 'gen')] = ' | '.join(pred_nlu)
+				sample[epoch_idx][dial_name]['{}-bs({})'.format(idx_sys, 'gen')] = ' | '.join(pred_bs)
+				sample[epoch_idx][dial_name]['{}-bs({})'.format(idx_sys, 'ref')] = ' | '.join(ref_bs)
+				pred_bs, ref_bs = set(pred_bs), set(ref_bs)
+				match_bs = pred_bs & ref_bs
+				sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'miss')] = ' | '.join(sorted(list(ref_bs - match_bs)))
+				sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'redt')] = ' | '.join(sorted(list(pred_bs - match_bs)))
+				sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'MATCH')] = 1 if pred_bs == ref_bs else 0
+			continue
 
-        if src == 'dst':
-            for i, (pred_nlu, pred_bs, ref_bs) in enumerate(
-                    zip(dial['sys']['pred_nlu'], dial['sys']['pred_bs'], dial['sys']['ref_bs'])):
-                idx_sys = two_digits(2 * i + 1)
-                sample[epoch_idx][dial_name]['{}-nlu({})'.format(idx_sys, 'gen')] = ' | '.join(pred_nlu)
-                sample[epoch_idx][dial_name]['{}-bs({})'.format(idx_sys, 'gen')] = ' | '.join(pred_bs)
-                sample[epoch_idx][dial_name]['{}-bs({})'.format(idx_sys, 'ref')] = ' | '.join(ref_bs)
-                pred_bs, ref_bs = set(pred_bs), set(ref_bs)
-                match_bs = pred_bs & ref_bs
-                sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'miss')] = ' | '.join(
-                    sorted(list(ref_bs - match_bs)))
-                sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'redt')] = ' | '.join(
-                    sorted(list(pred_bs - match_bs)))
-                sample[epoch_idx][dial_name]['{}-{}'.format(idx_sys, 'MATCH')] = 1 if pred_bs == ref_bs else 0
-            continue
+		for i, (ref_usr, gen_usr, ref_sys, gen_sys) in enumerate(zip(dial['usr']['ref_' + src], dial['usr']['gen_' + src], dial['sys']['ref_' + src],dial['sys']['gen_' + src])):
+			idx_usr = two_digits(2 * i)
+			idx_sys = two_digits(2 * i + 1)
+			sample[epoch_idx][dial_name]['{}-usr({})'.format(idx_usr, 'gen')] = '{}'.format(gen_usr)
+			sample[epoch_idx][dial_name]['{}-usr({})'.format(idx_usr, 'ref')] = '{}'.format(ref_usr)
+			sample[epoch_idx][dial_name]['{}-sys({})'.format(idx_sys, 'gen')] = '{}'.format(gen_sys)
+			sample[epoch_idx][dial_name]['{}-sys({})'.format(idx_sys, 'ref')] = '{}'.format(ref_sys)
 
-        for i, (ref_usr, gen_usr, ref_sys, gen_sys) in enumerate(
-                zip(dial['usr']['ref_' + src], dial['usr']['gen_' + src], dial['sys']['ref_' + src],
-                    dial['sys']['gen_' + src])):
-            idx_usr = two_digits(2 * i)
-            idx_sys = two_digits(2 * i + 1)
-            sample[epoch_idx][dial_name]['{}-usr({})'.format(idx_usr, 'gen')] = '{}'.format(gen_usr)
-            sample[epoch_idx][dial_name]['{}-usr({})'.format(idx_usr, 'ref')] = '{}'.format(ref_usr)
-            sample[epoch_idx][dial_name]['{}-sys({})'.format(idx_sys, 'gen')] = '{}'.format(gen_sys)
-            sample[epoch_idx][dial_name]['{}-sys({})'.format(idx_sys, 'ref')] = '{}'.format(ref_sys)
+		for metric, value in record[dial_name].items():  # metric=success or match
+			sample[epoch_idx][dial_name][metric] = value
 
-        for metric, value in record[dial_name].items():  # metric=success or match
-            sample[epoch_idx][dial_name][metric] = value
+		sample[epoch_idx][dial_name]['--miss_reqt--'] = reqt_record[dial_name]
 
-        sample[epoch_idx][dial_name]['--miss_reqt--'] = reqt_record[dial_name]
+	sample['result'] = res
+	sample['reward'] = reward
 
-    sample['result'] = res
-    sample['reward'] = reward
-
-    with open(out_f, 'w') as f:
-        json.dump(sample, f, indent=2, sort_keys=True)
-    print('Done writing out model generation!')
+	with open(out_f, 'w') as f:
+		json.dump(sample, f, indent=2, sort_keys=True)
+	print('Done writing out model generation!')
 
 
 def collect_dial(decode_all, decode_batch, side, batch, turn_idx):
-    '''Method to collect model generation in inference (interact with fixed test corpus)'''
+	'''Method to collect model generation in inference (interact with fixed test corpus)'''
 	for batch_idx, dial_name in enumerate(batch['dial_name']):
 		if not batch['valid_turn'][batch_idx]:
 			continue
