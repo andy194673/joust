@@ -75,7 +75,6 @@ def runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list):
 		seq_len = dataset.pad_seq(idx_batch, vocab)
 		return torch.tensor(idx_batch).long().cuda(), torch.tensor(seq_len).long().cuda()
 
-	UPDATE_LOSS = 0
 	for turn_idx, batch in enumerate(batch_list):
 		# previous ground-truth or prediction of act sequence
 		if mode == 'gen' and config.sys_act_type == 'gen' and turn_idx != 0:
@@ -216,15 +215,18 @@ def runRLOneEpoch(epoch_idx):
 def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 	'''Train both agents one epoch using supervised learning'''
 	t0 = time.time()
-	LOSS = {'word_usr': 0, 'word_sys': 0,
-			'act_usr': 0, 'act_sys': 0,
-			'dst_slot': 0, 'dst_value': 0,
-			'count': 0}
+	LOSS = {
+		'word_usr': 0, 'word_sys': 0,
+		'act_usr': 0, 'act_sys': 0,
+		'dst_slot': 0, 'dst_value': 0,
+		'count': 0}
 	n = 0
-	grad_list = []
-	decode_all = {}
-	while True:
-		# get batch
+	grad_list, decode_all = [], dict()
+	data_len = len(dataset.data[dType])
+	n_batch = data_len // config.batch_size if dType == 'train' else data_len // config.eval_batch_size
+	for _ in tqdm(range(n_batch)):
+	# while True:
+		# get a batch of dialogues
 		batch_list = dataset.next_batch_list(dType)
 		if batch_list == None:
 			break
