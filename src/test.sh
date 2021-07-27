@@ -1,6 +1,6 @@
 #!/bin/bash
 
-checkpoint=$1
+model_name=$1
 
 # dst option
 oracle_dst=false; prev_bs=true
