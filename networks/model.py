@@ -673,21 +673,18 @@ class Model(nn.Module):
 					domain_in_goal.append(domain)
 
 			max_act_len = 0
-			print('\nDIALOGUE:', gen_dial['dial_name'], domain_in_goal)
+			print('\nStart generate dialogue using goal from', gen_dial['dial_name'], domain_in_goal)
 			for side_idx, (goal_vec, bs_vec, usr_act, sys_act, usr_word, sys_word) in enumerate(zip(gen_dial['goal_vec'], \
 					gen_dial['bs_vec'], gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
-				# trace act_len from sys side
-#				act_len = len(sys_act.split())
+
 				act_len = max( len(sys_act.split()), len(usr_act.split()) )
 				if act_len > max_act_len:
 					max_act_len = act_len
-				print('side_idx:', side_idx)
-				print('goal_vec:', goal_vec)
-				print('bs_vec:', bs_vec)
-				print('act: {} -> {}'.format(usr_act, sys_act))
-				print('usr: {}\nsys: {}\n'.format(usr_word, sys_word))
-			print('Effective dialogue: {}'.format(max_act_len < 20))
-			print('-----Done dialogue-----')
+			# 	print('turn_idx:', side_idx)
+			# 	print('act: {} -> {}'.format(usr_act, sys_act))
+			# 	print('usr: {}\nsys: {}\n'.format(usr_word, sys_word))
+			# print('Effective dialogue: {}'.format(max_act_len < 20))
+			# print('-----Done dialogue-----')
 
 			# filter out dialogues with unknown weird behavior (e.g., too long act seq)
 			n_side = gen_dial['n_side_when_done']
@@ -707,7 +704,7 @@ class Model(nn.Module):
 				usr_miss_answer = self.get_usr_miss_answer_reward(gen_dial) if self.config.rl_update_usr else [0 for _ in range(n_side)]
 
 			# total reward
-			sys_reward = [ r1+r2+r3+r4 for r1, r2, r3 in zip(provide_reward, repeat_reward, answer_reward) ]
+			sys_reward = [ r1+r2+r3 for r1, r2, r3 in zip(provide_reward, repeat_reward, answer_reward) ]
 			usr_reward = [ r1+r2+r3 for r1, r2, r3 in zip(usr_repeat_info, usr_repeat_ask, usr_miss_answer) ]
 			gen_dial['sys_reward'], gen_dial['usr_reward'] = sys_reward, usr_reward
 			avg_sys_r += np.mean(gen_dial['sys_reward'])
