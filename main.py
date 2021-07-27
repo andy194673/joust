@@ -220,19 +220,18 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		'act_usr': 0, 'act_sys': 0,
 		'dst_slot': 0, 'dst_value': 0,
 		'count': 0}
-	n = 0
+
 	grad_list, decode_all = [], dict()
 	n_data = len(dataset.data[dType])
 	n_batch = n_data // config.batch_size if dType == 'train' else n_data // config.eval_batch_size
-	for _ in tqdm(range(n_batch)): # stderr
+	for i in tqdm(range(n_batch)): # stderr
 		# get a batch of dialogues
 		batch_list = dataset.next_batch_list(dType)
 		if batch_list == None:
 			break
 
 		runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list)
-		n += 1
-		if n == 1 and epoch_idx == 0 and dType == 'train':
+		if i == 1 and epoch_idx == 0 and dType == 'train':
 			print('{} dialogues takes {:.1f} sec, estimated time for an epoch: {:.1f}'
 				  .format(config.batch_size, time.time()-t0, len(dataset.data[dType])/config.batch_size*(time.time()-t0) ), file=sys.stderr)
 
@@ -280,7 +279,7 @@ def trainIter(config, dataset, CT):
 	if config.mode == 'finetune' and config.ft_method == 'ewc':
 		fisher, optpar = compute_fisher_matric(config, dataset)
 
-	# test before finetune or rl
+	# test the model before finetune or rl
 	if config.mode in ['finetune', 'rl']:
 		print('Load model')
 		CT.loadModel(config.model_dir, config.load_epoch)
@@ -317,9 +316,9 @@ def trainIter(config, dataset, CT):
 				dataset.init()
 				success, match, bleu, score_auto = runOneEpoch('valid', epoch_idx, 'gen')
 
-			if config.mode == 'rl': # pick the best model based on automatic evaluation on dev during interaction
+			if config.mode == 'rl': # pick the best model based on automatic evaluation on dev set
 				score = score_auto
-			else: # pretrain, finetune, pick the best model based on interaction result during supervised learning
+			else: # pretrain, finetune, pick the best model based on interaction quality
 				score = score_usr
 
 		# save model
@@ -384,8 +383,6 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 
 		with torch.no_grad():
 			gen_dial_batch = CT.interact(beam_search=beam_search, dial_name_batch=dial_name_batch)
-		if p == config.rl_eval_batch_size:
-			print('Finish 1 batch: {:.1f}'.format(time.time()-t0), file=sys.stderr)
 
 		# trace generated dialogues
 		if scan_examples:

@@ -1,17 +1,13 @@
 #!/bin/bash
 
 # create ckp, log folder
-for type in 'checkpoint' 'log'; do
-  for mode in 'pretrain' 'finetune' 'rl'; do
-		mkdir -p $type/$mode
-	done
-done
+#for folder_type in 'checkpoint' 'log'; do
+#		mkdir $folder_type
+#done
 
-# create result folder
-for type in 'result' 'result_usr'; do
-	for mode in 'pretrain' 'finetune' 'rl'; do
-		mkdir -p $type/$mode/word
-		mkdir -p $type/$mode/act
-		mkdir -p $type/$mode/dst
+# create result file
+for folder_type in 'result' 'result_usr'; do
+  for result_type in 'dst' 'policy' 'nlg';
+		mkdir -p $folder_type/$result_type
 	done
 done
