@@ -4,8 +4,8 @@ checkpoint=$1
 
 # create output folder
 for folder_type in 'corpus_interact_output' 'user_interact_output'; do
-  for result_type in 'dst' 'policy' 'nlg';
-		mkdir -p $folder_type/$result_type
+  for result_type in 'dst' 'policy' 'nlg'; do
+    mkdir -p $folder_type/$result_type
 	done
 done
 
