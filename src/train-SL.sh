@@ -1,6 +1,6 @@
 #!/bin/bash
 
-model_name="full_train_SL"
+model_name=$1
 model_dir='checkpoint/'$model_name
 
 # dst option

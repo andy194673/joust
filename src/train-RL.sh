@@ -1,8 +1,8 @@
 #!/bin/bash
 
-sl_model_name="full_train_SL"
+sl_model_name=$1
 sl_model_dir='checkpoint/'$sl_model_name
-rl_model_name="full_train_RL"
+rl_model_name=$2
 rl_model_dir='checkpoint/'$rl_model_name
 
 # copy pre-trained model to avoid overwrite

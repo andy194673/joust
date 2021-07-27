@@ -224,7 +224,7 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 
 		runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list)
 		if i == 1 and epoch_idx == 0 and dType == 'train':
-			print('{} dialogues takes {:.1f} sec, estimated time for an epoch ({}): {:.1f}'
+			print('{} dialogues takes {:.1f} sec, estimated time for an epoch ({} dialogues): {:.1f} sec'
 				  .format(config.batch_size, time.time()-t0, n_data, n_data/config.batch_size*(time.time()-t0) ), file=sys.stderr)
 
 	if mode == 'teacher_force':
@@ -265,7 +265,7 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		return success, match, bleu_sys, score
 
 
-def trainIter(config, dataset, CT):
+def trainIter(config, dataset, model):
 	'''Training over epochs'''
 	if config.mode == 'finetune' and config.ft_method == 'ewc':
 		fisher, optpar = compute_fisher_matric(config, dataset)
@@ -273,15 +273,15 @@ def trainIter(config, dataset, CT):
 	# test the model before finetune or rl
 	if config.mode in ['finetune', 'rl']:
 		print("Load pre-trained model from: {}".format(config.model_dir))
-		CT.loadModel(config.model_dir, config.load_epoch)
+		model.loadModel(config.model_dir, config.load_epoch)
 
 		if config.mode == 'finetune' and config.ft_method == 'ewc':
-			CT.fisher = fisher
-			CT.optpar = optpar
+			model.fisher = fisher
+			model.optpar = optpar
 
 		print('Test before doing finetune or rl')
 		with torch.no_grad():
-			test(config, dataset, CT)
+			test(config, dataset, model)
 	print('-------------------------------------------------------------------------')
 
 	best_score = -100
@@ -289,21 +289,21 @@ def trainIter(config, dataset, CT):
 	for epoch_idx in range(config.epoch):
 		# train
 		dataset.init()
-		CT.train()
+		model.train()
 		if config.mode in ['pretrain', 'finetune']:
 			_ = runOneEpoch('train', epoch_idx, 'teacher_force')
 		else: # rl
 			runRLOneEpoch(epoch_idx)
 
 		# evaluate
-		CT.eval()
+		model.eval()
 		with torch.no_grad():
 			if config.mode in ['pretrain', 'finetune']:
 				dataset.init() # reset data pointer
 				loss = runOneEpoch('valid', epoch_idx, 'teacher_force')
 
 			if config.mode in ['pretrain', 'finetune']:
-				success, match, bleu, score_usr = test_with_usr_simulator(config, dataset, CT, 'valid', tag='usr')
+				success, match, bleu, score_usr = test_with_usr_simulator(config, dataset, model, 'valid', tag='usr')
 
 			elif config.mode == 'rl':
 				dataset.init()
@@ -321,7 +321,7 @@ def trainIter(config, dataset, CT):
 			runOneEpoch('test', epoch_idx, 'gen')
 			best_score = score
 			no_improve_count = 0
-			CT.saveModel('best')
+			model.saveModel('best')
 		else:
 			no_improve_count += 1
 		print('----------------------------------------------------------------------------')
@@ -333,13 +333,13 @@ def trainIter(config, dataset, CT):
 	print('Done Training!')
 
 
-def test(config, dataset, CT):
+def test(config, dataset, model):
 	'''Test the dialogue system against fixed test corpus'''
 	# load checkpoint
-	CT.loadModel(config.model_dir, config.load_epoch)
+	model.loadModel(config.model_dir, config.load_epoch)
 
 	# evaluate
-	CT.eval()
+	model.eval()
 	with torch.no_grad():
 		# NOTE: uncomment here for generation on valid set
 		# dataset.init()
@@ -350,16 +350,16 @@ def test(config, dataset, CT):
 		runOneEpoch('test', config.load_epoch, 'gen')
 
 		# test with the trained user simulator
-		test_with_usr_simulator(config, dataset, CT, 'valid', act_result=config.usr_act_result,
+		test_with_usr_simulator(config, dataset, model, 'valid', act_result=config.usr_act_result,
 								word_result=config.usr_word_result, dst_result=config.usr_dst_result, tag='usr')
 
 
-def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_result=None, dst_result=None, scan_examples=False, tag=None):
+def test_with_usr_simulator(config, dataset, model, dType, act_result=None, word_result=None, dst_result=None, scan_examples=False, tag=None):
 	'''Test the dialogue agent against the user simulator'''
 	print("\nStart agent-agent interaction based on validation goals... (results of DST and NLG are 0 here as no references)")
 	beam_search = False
 	# eval mode
-	CT.eval() # turn off dropout
+	model.eval() # turn off dropout
 
 	# feed goals from corpus
 	dial_name_all = [dial['dial_name'] for dial in dataset.data[dType]]
@@ -377,7 +377,7 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 		p += config.rl_eval_batch_size
 
 		with torch.no_grad():
-			gen_dial_batch = CT.interact(beam_search=beam_search, dial_name_batch=dial_name_batch)
+			gen_dial_batch = model.interact(beam_search=beam_search, dial_name_batch=dial_name_batch)
 
 		# trace generated dialogues
 		if scan_examples:
@@ -413,7 +413,7 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 	# evaluate generated dialogues
 	success, match, record = evaluator.context_to_response_eval(decode_all, dType)
 	reqt_acc, reqt_total, reqt_record = evaluator.calculate_reqt_acc(decode_all, mode='interaction')
-	reward = evaluator.calculate_eval_reward(decode_all, CT, mode='interaction')
+	reward = evaluator.calculate_eval_reward(decode_all, model, mode='interaction')
 
 	epoch_idx = "agent-agent"
 	bleu_sys = 0 # no nlg reference in agent-agent interaction
