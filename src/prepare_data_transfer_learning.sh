@@ -1,9 +1,9 @@
 #!/bin/bash
 # prepare single-domain to multi-domain data
 mkdir -p data/single_to_multi/
-#python3 utils/split_single_multi_data.py > info/split_single_to_multi_all.log
-#echo 'Done'
-#exit
+python utils/split_single_multi_data.py
+echo 'Done creating single-to-multi domain data, stored in data/single_to_multi/'
+exit
 
 
 # prepare domain transfer data
