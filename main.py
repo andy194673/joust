@@ -126,8 +126,8 @@ def runBatchDialogue(batch_list, LOSS, dType, mode, decode_all, grad_list):
 
 		else: # generation mode
 			decode_batch = model(batch, turn_idx=turn_idx, mode='gen')
-			collect_dial(decode_all, decode_batch, 'usr', batch, turn_idx)
-			collect_dial(decode_all, decode_batch, 'sys', batch, turn_idx)
+			collect_dial(decode_all, decode_batch, 'usr', batch, turn_idx, dataset)
+			collect_dial(decode_all, decode_batch, 'sys', batch, turn_idx, dataset)
 
 	# check correct number of generated turns within a dialogue
 	if mode == 'gen':
@@ -413,8 +413,8 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 			for gen_dial in gen_dial_batch:
 				decode_batch[key].extend(gen_dial[key])
 
-		collect_dial_interact(decode_all, decode_batch, 'usr', batch)
-		collect_dial_interact(decode_all, decode_batch, 'sys', batch)
+		collect_dial_interact(decode_all, decode_batch, 'usr', batch, dataset)
+		collect_dial_interact(decode_all, decode_batch, 'sys', batch, dataset)
 
 	# evaluate generated dialogues
 	success, match, record = evaluator.context_to_response_eval(decode_all, dType)
