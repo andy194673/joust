@@ -667,7 +667,7 @@ class Model(nn.Module):
 					domain_in_goal.append(domain)
 
 			max_act_len = 0
-			print('\nStart generate dialogue using goal from', gen_dial['dial_name'], domain_in_goal)
+			# print('\nStart generate dialogue using goal from', gen_dial['dial_name'], domain_in_goal)
 			for side_idx, (goal_vec, bs_vec, usr_act, sys_act, usr_word, sys_word) in enumerate(zip(gen_dial['goal_vec'], \
 					gen_dial['bs_vec'], gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
 

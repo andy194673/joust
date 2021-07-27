@@ -173,7 +173,7 @@ def runRLOneEpoch(epoch_idx):
 			rl_usr_loss, grad_usr_norm = 0, 0
 
 		update_count += 1
-		print('idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f}'.
+		print('dialogue idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f}'.
 			  format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm))
 
 		del gen_dial_batch
