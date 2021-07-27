@@ -60,7 +60,7 @@ def write_sample(decode_all, src, epoch_idx, sample_file, record, reqt_record, r
 	print('Done writing out model generation!')
 
 
-def collect_dial(decode_all, decode_batch, side, batch, turn_idx, dataset):
+def collect_dial(decode_all, decode_batch, side, batch, turn_idx, dataset, config):
 	'''Method to collect model generation in inference (interact with fixed test corpus)'''
 	for batch_idx, dial_name in enumerate(batch['dial_name']):
 		if not batch['valid_turn'][batch_idx]:
@@ -98,7 +98,7 @@ def collect_dial(decode_all, decode_batch, side, batch, turn_idx, dataset):
 				decode_all[dial_name][side]['ref_bs'].append( dict2list(batch['ref']['dst']['bs'][batch_idx]) )
 
 
-def collect_dial_interact(decode_all, decode_batch, side, batch, dataset):
+def collect_dial_interact(decode_all, decode_batch, side, batch, dataset, config):
 	'''Method to collect model generation in interaction between two agents'''
 	dial_len, dial_name = batch['dial_len'], batch['dial_name']
 	assert len(decode_batch['word_{}'.format(side)]) == torch.sum(dial_len).item()
