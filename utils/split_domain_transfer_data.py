@@ -81,7 +81,7 @@ for domain in domains:
 		continue
 	print(domain)
 	os.makedirs('data/domain_transfer/{}'.format(domain))
-	os.makedirs('data/MultiWOZ/domain_transfer/{}/{}'.format(domain, 'source'))
+	os.makedirs('data/domain_transfer/{}/{}'.format(domain, 'source'))
 	for size in size_list:
 		os.makedirs('data/domain_transfer/{}/{}_size{}'.format(domain, 'target', size))
 
