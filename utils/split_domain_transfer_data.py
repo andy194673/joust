@@ -81,9 +81,9 @@ for domain in domains:
 		continue
 	print(domain)
 	os.makedirs('data/domain_transfer/{}'.format(domain))
-	os.makedirs('data/MultiWOZ/domain_transfer/{}/{}'.format(domain, 'not_involved'))
+	os.makedirs('data/MultiWOZ/domain_transfer/{}/{}'.format(domain, 'source'))
 	for size in size_list:
-		os.makedirs('data/domain_transfer/{}/{}_size{}'.format(domain, 'involved', size))
+		os.makedirs('data/domain_transfer/{}/{}_size{}'.format(domain, 'target', size))
 
 	for dType in ['train', 'val', 'test']:
 		inv, not_inv = len(data[domain]['involved'][dType]), len(data[domain]['not_involved'][dType])
