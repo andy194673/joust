@@ -214,6 +214,11 @@ def runRLOneEpoch(epoch_idx):
 
 def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 	'''Train both agents one epoch using supervised learning'''
+	if dType == "train":
+		print("Start training epoch: {}...".format(epoch_idx))
+	else:
+		print("Start evaluation against {} set...".format(dType))
+
 	t0 = time.time()
 	LOSS = {
 		'word_usr': 0, 'word_sys': 0,
@@ -248,7 +253,7 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 
 	else:
 		# calcuate success, match and bleu
-		print('# of decoded dialogus: {}'.format(len(decode_all)), file=sys.stderr)
+		print('# of decoded dialogues: {}'.format(len(decode_all)), file=sys.stderr)
 		success, match, record = evaluator.context_to_response_eval(decode_all, dType)
 		reqt_acc, reqt_total, reqt_record = evaluator.calculate_reqt_acc(decode_all, mode='fix_corpus')
 		reward = evaluator.calculate_eval_reward(decode_all, model, mode='fix_corpus')
@@ -323,11 +328,11 @@ def trainIter(config, dataset, CT):
 
 		# save model
 		if score > best_score:
+			print('Best score on validation!')
 			dataset.init()
 			runOneEpoch('test', epoch_idx, 'gen')
 			best_score = score
 			no_improve_count = 0
-			print('Best score on validation!')
 			CT.saveModel('best')
 		else:
 			no_improve_count += 1
@@ -363,18 +368,20 @@ def test(config, dataset, CT):
 
 def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_result=None, dst_result=None, scan_examples=False, tag=None):
 	'''Test the dialogue agent against the user simulator'''
+	print("Start agent-agent interaction based on validation goals... (results of DST and NLG are 0 here as no references)")
 	beam_search = False
 	# eval mode
 	CT.eval() # turn off dropout
 
 	# feed goals from corpus
 	dial_name_all = [dial['dial_name'] for dial in dataset.data[dType]]
-
-	dial_name_batch = []
 	decode_all = {}
 	t0 = time.time()
 	p = 0
-	while True:
+
+	n_data = len(dial_name_all)
+	n_batch = n_data // config.rl_eval_batch_size
+	for _ in tqdm(range(n_batch)):
 		if p >= len(dial_name_all):
 			break
 
@@ -426,7 +433,8 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 	# like bleu, no reference for dst during interaction
 	joint_acc, sv_acc, slot_acc = 0,0,0
 	epoch_idx = 'usr' if tag == 'usr' else 'full_usr'
-	print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | reqt: {:.2f} ({}) | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'.format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, reqt_acc, reqt_total, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
+	print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | reqt: {:.2f} ({}) | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'
+		  .format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, reqt_acc, reqt_total, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
 
 	# write samples
 	if config.mode == 'test' and act_result != None and word_result != None and dst_result != None:

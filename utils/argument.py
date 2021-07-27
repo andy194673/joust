@@ -70,7 +70,7 @@ def get_config():
     parser.add_argument('--lr', type=float, default=0.001, help='learning rate for supervised learning')
     parser.add_argument('--epoch', type=int, default=30)
     parser.add_argument('--no_improve_epoch', type=int, default=5, help='used for early stop')
-    parser.add_argument('--seed', type=int, default=1122)
+    parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--grad_clip', type=float, default=5)
     parser.add_argument('--model_dir', type=str, default='checkpoint/')
 
