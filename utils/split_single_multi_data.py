@@ -70,9 +70,9 @@ def write(multi, data_size, single):
 
 
 print('Loading data...')
-train_dial = json.load(open('data/process_data/train_dials.jso'))
-val_dial = json.load(open('data/process_data/val_dials.jso'))
-test_dial = json.load(open('data/process_data/test_dials.jso'))
+train_dial = json.load(open('data/process_data/train_dials.json'))
+val_dial = json.load(open('data/process_data/val_dials.json'))
+test_dial = json.load(open('data/process_data/test_dials.json'))
 all_data = json.load(open('data/raw_data/annotated_user_da_with_span_full_patchName.json'))
 
 domains = ['restaurant', 'hotel', 'attraction', 'train', 'taxi', 'police', 'hospital']
