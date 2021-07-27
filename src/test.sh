@@ -1,6 +1,7 @@
 #!/bin/bash
 
 model_name=$1
+model_dir='checkpoint/'$model_name
 
 # dst option
 oracle_dst=false; prev_bs=true
