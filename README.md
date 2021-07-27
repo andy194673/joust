@@ -2,7 +2,7 @@
 
 [**Paper**](https://aclanthology.org/2021.acl-long.13.pdf) |
 [**Full Training**](#Full-Training) | [**Transfer Learning**](#Transfer-Learning) |
-[**Citation**](#Citation) | [**License**](#License) | [**Contact**](#Contact-Us)
+[**Citation**](#Citation) | [**Contact**](#Contact-Us)
 
 This is the source code of the paper [Transferable Dialogue Systems and User Simulators](https://aclanthology.org/2021.acl-long.13.pdf),
 which is accepted by ACL-IJCNLP 2021.
