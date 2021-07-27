@@ -59,7 +59,7 @@ def write_sample(config, decode_all, src, epoch_idx, sample_file, record, reqt_r
 
 	with open(out_f, 'w') as f:
 		json.dump(sample, f, indent=2, sort_keys=True)
-	print('Done writing out model generation!')
+	# print('Done writing out model generation!')
 
 
 def collect_dial(decode_all, decode_batch, side, batch, turn_idx, dataset, config):

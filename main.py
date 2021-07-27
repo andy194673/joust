@@ -257,7 +257,6 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 		# write output sample
 		if dType == 'test' and config.mode == 'test':
 			res = {'success': success, 'match': match, 'bleu_sys': bleu_sys, 'bleu_usr': bleu_usr, 'score': score,
-				   'reqt_acc': reqt_acc, 'reqt_total': reqt_total,
 				   'dst_joint_acc': joint_acc*100, 'dst_sv_acc': sv_acc*100, 'dst_slot_acc': slot_acc*100}
 			write_sample(config, decode_all, 'word', epoch_idx, config.corpus_word_result, record, reqt_record, res, reward)
 			write_sample(config, decode_all, 'act', epoch_idx, config.corpus_act_result, record, reqt_record, res, reward)
@@ -416,17 +415,17 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 	reqt_acc, reqt_total, reqt_record = evaluator.calculate_reqt_acc(decode_all, mode='interaction')
 	reward = evaluator.calculate_eval_reward(decode_all, CT, mode='interaction')
 
-	bleu_usr = bleu_sys = 0
+	epoch_idx = "agent-agent"
+	bleu_sys = 0 # no nlg reference in agent-agent interaction
 	score = 0.5*(success+match)+bleu_sys
 
 	# like bleu, no reference for dst during interaction
 	print('{} Eval {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'
-		  .format(dType, "agent-agent", score, success, match, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
+		  .format(dType, epoch_idx, score, success, match, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
 
 	# write samples
 	if config.mode == 'test' and act_result != None and word_result != None and dst_result != None:
-		res = {'success': success, 'match': match, 'bleu_sys': bleu_sys, 'bleu_usr': bleu_usr, 'score': score,
-			   'reqt_acc': reqt_acc, 'reqt_total': reqt_total, 'dst_joint_acc': joint_acc*100, 'dst_sv_acc': sv_acc*100, 'dst_slot_acc': slot_acc*100}
+		res = {'success': success, 'match': match, 'bleu_sys': 'no bleu', 'bleu_usr': 'no bleu', 'score': score}
 		write_sample(config, decode_all, 'word', epoch_idx, word_result, record, reqt_record, res, reward)
 		write_sample(config, decode_all, 'act', epoch_idx, act_result, record, reqt_record, res, reward)
 		if not config.oracle_dst:

@@ -1,7 +1,6 @@
 #!/bin/bash
-# prepare single to multi data
-#rm -r data/MultiWOZ/single_to_multi/
-#mkdir data/MultiWOZ/single_to_multi/
+# prepare single-domain to multi-domain data
+mkdir data/single_to_multi/
 #python3 utils/splitSingleMultiDomain.py > info/split_single_to_multi_all.log
 #echo 'Done'
 #exit
