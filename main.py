@@ -173,8 +173,8 @@ def runRLOneEpoch(epoch_idx):
 			rl_usr_loss, grad_usr_norm = 0, 0
 
 		update_count += 1
-		print('dialogue idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f}'.
-			  format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm))
+		# print('dialogue idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f}'.
+		# 	  format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm))
 
 		del gen_dial_batch
 		del avg_sys_r, avg_usr_r
@@ -195,7 +195,7 @@ def runRLOneEpoch(epoch_idx):
 
 		if update_count == 1:
 			t1 = time.time()-t0
-			print('update once: {:.1f}, estimate time rl one epoch: {:.1f}'.format(t1, config.rl_dial_one_epoch/config.rl_batch_size*t1))
+			print('update once: {:.1f}, estimate time on rl for one epoch: {:.1f}'.format(t1, config.rl_dial_one_epoch/config.rl_batch_size*t1))
 
 
 def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
@@ -280,10 +280,9 @@ def trainIter(config, dataset, CT):
 			CT.fisher = fisher
 			CT.optpar = optpar
 
-		# TODO: uncomment here
-		# print('Test before doing finetune or rl')
-		# with torch.no_grad():
-		# 	test(config, dataset, CT)
+		print('Test before doing finetune or rl')
+		with torch.no_grad():
+			test(config, dataset, CT)
 	print('-------------------------------------------------------------------------')
 
 	best_score = -100

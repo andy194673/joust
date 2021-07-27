@@ -1,22 +1,24 @@
 #!/bin/bash
 
-
 checkpoint=$1
 
-# best rl networks
-model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5430' # provide this one
-#model_dir='/home/bht26/rds/hpc-work/self-play/checkpoint/rl/5457'
+# create output folder
+for folder_type in 'corpus_interact_output' 'user_interact_output'; do
+  for result_type in 'dst' 'policy' 'nlg';
+		mkdir -p $folder_type/$result_type
+	done
+done
 
-######## test SL networks #######
 # results of corpus interaction
-corpus_word='result/pretrain/word/'$model_name'.json'
-corpus_act='result/pretrain/act/'$model_name'.json'
-corpus_dst='result/pretrain/dst/'$model_name'.json'
-# results of agents' interaction
-usr_word='result_usr/pretrain/word/'$model_name'.json'
-usr_act='result_usr/pretrain/act/'$model_name'.json'
-usr_dst='result_usr/pretrain/dst/'$model_name'.json'
-#res='log/pretrain/'$model_name'.res'
+corpus_dst='corpus_interact_output/dst/'$model_name'.json'
+corpus_act='corpus_interact_output/policy/'$model_name'.json'
+corpus_word='corpus_interact_output/nlg/'$model_name'.json'
+
+# results of agent-agent interaction
+usr_dst='user_interact_output/dst/'$model_name'.json'
+usr_act='user_interact_output/policy/'$model_name'.json'
+usr_word='user_interact_output/nlg/'$model_name'.json'
+
 python main.py --mode='test' --model_dir=$model_dir \
 					     --embed_size=$dim --hidden_size=$dim \
 				    	 --oracle_dst=$oracle_dst --attn_prev_bs=$prev_bs \

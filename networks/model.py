@@ -558,7 +558,6 @@ class Model(nn.Module):
 			else:
 				weight.append(w)
 
-			# TODO: re-think this for domain transfer case
 			if '_name' in act_sys or '_trainID' in act_sys: # make the turns afterward not affected
 				domain_entityProvided.add(turn_domain)
 				w = 0
