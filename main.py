@@ -266,10 +266,10 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 			res = {'success': success, 'match': match, 'bleu_sys': bleu_sys, 'bleu_usr': bleu_usr, 'score': score,
 				   'reqt_acc': reqt_acc, 'reqt_total': reqt_total,
 				   'dst_joint_acc': joint_acc*100, 'dst_sv_acc': sv_acc*100, 'dst_slot_acc': slot_acc*100}
-			write_sample(decode_all, 'word', epoch_idx, config.corpus_word_result, record, reqt_record, res, reward)
-			write_sample(decode_all, 'act', epoch_idx, config.corpus_act_result, record, reqt_record, res, reward)
+			write_sample(config, decode_all, 'word', epoch_idx, config.corpus_word_result, record, reqt_record, res, reward)
+			write_sample(config, decode_all, 'act', epoch_idx, config.corpus_act_result, record, reqt_record, res, reward)
 			if not config.oracle_dst:
-				write_sample(decode_all, 'dst', epoch_idx, config.corpus_dst_result, record, reqt_record, res, reward)
+				write_sample(config, decode_all, 'dst', epoch_idx, config.corpus_dst_result, record, reqt_record, res, reward)
 		return success, match, bleu_sys, score
 
 
@@ -433,10 +433,10 @@ def test_with_usr_simulator(config, dataset, CT, dType, act_result=None, word_re
 	if config.mode == 'test' and act_result != None and word_result != None and dst_result != None:
 		res = {'success': success, 'match': match, 'bleu_sys': bleu_sys, 'bleu_usr': bleu_usr, 'score': score,
 			   'reqt_acc': reqt_acc, 'reqt_total': reqt_total, 'dst_joint_acc': joint_acc*100, 'dst_sv_acc': sv_acc*100, 'dst_slot_acc': slot_acc*100}
-		write_sample(decode_all, 'word', epoch_idx, word_result, record, reqt_record, res, reward)
-		write_sample(decode_all, 'act', epoch_idx, act_result, record, reqt_record, res, reward)
+		write_sample(config, decode_all, 'word', epoch_idx, word_result, record, reqt_record, res, reward)
+		write_sample(config, decode_all, 'act', epoch_idx, act_result, record, reqt_record, res, reward)
 		if not config.oracle_dst:
-			write_sample(decode_all, 'dst', epoch_idx, dst_result, record, reqt_record, res, reward)
+			write_sample(config, decode_all, 'dst', epoch_idx, dst_result, record, reqt_record, res, reward)
 	return success, match, bleu_sys, score
 
 

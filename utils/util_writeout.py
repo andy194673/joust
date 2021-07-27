@@ -1,8 +1,10 @@
-import os, sys
+import os
 import json
+import torch
+from utils.util_dst import dict2list
 
 
-def write_sample(decode_all, src, epoch_idx, sample_file, record, reqt_record, res, reward):
+def write_sample(config, decode_all, src, epoch_idx, sample_file, record, reqt_record, res, reward):
 	'''Method to dump model generation'''
 	def two_digits(x):
 		if x < 10:
