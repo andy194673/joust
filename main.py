@@ -144,7 +144,8 @@ def runRLOneEpoch(epoch_idx):
 	'''Train both agents one epoch using reinforcement learning'''
 	t0 = time.time()
 	update_count = 0 # count of rl update
-	while True:
+	n_batch = config.rl_dial_one_epoch // config.rl_batch_size
+	for _ in tqdm(range(n_batch)):
 		if (update_count * config.rl_batch_size) >= config.rl_dial_one_epoch:
 			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0))
 			break
@@ -190,7 +191,6 @@ def runRLOneEpoch(epoch_idx):
 				batch_list = dataset.next_batch_list('train')
 			runBatchDialogue(batch_list, None, 'train', 'teacher_force', None, grad_list) # update by sl
 			print('sl grad: {:.2f}'.format(np.mean(grad_list)))
-			print('sl grad: {:.2f}'.format(np.mean(grad_list)), file=sys.stderr)
 			del batch_list
 
 		if update_count == 1:
