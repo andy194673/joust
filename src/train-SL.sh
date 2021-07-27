@@ -13,4 +13,4 @@ python main.py --mode='pretrain' --model_dir=$model_dir \
 				       --batch_size=$batch_size --embed_size=$dim --hidden_size=$dim \
 				       --oracle_dst=$oracle_dst --attn_prev_bs=$prev_bs \
 				       --epoch=30 --no_improve_epoch=10 \
-				       train_size=200
+				       train_size=500
