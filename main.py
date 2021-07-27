@@ -147,53 +147,39 @@ def runRLOneEpoch(epoch_idx):
 	while True:
 		if (update_count * config.rl_batch_size) >= config.rl_dial_one_epoch:
 			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0))
-			print('Done RL one epoch | Time: {:.1f}'.format(time.time()-t0), file=sys.stderr)
 			break
 
-		# run rl
-		RL_LOSS = []
-		for i in range(config.rl_iterate_ratio):
-			# sample goals for interaction
-			dial_name_batch = dataset.next_rl_batch() # a list of dial name
-			if len(dial_name_batch) != config.rl_batch_size:
-				dataset.init_rl()
-				dial_name_batch = dataset.next_rl_batch()
+		# sample goals for interaction
+		dial_name_batch = dataset.next_rl_batch() # a list of dial name
+		if len(dial_name_batch) != config.rl_batch_size:
+			dataset.init_rl()
+			dial_name_batch = dataset.next_rl_batch()
 
-			gen_dial_batch = model.interact(beam_search=False, dial_name_batch=dial_name_batch)
+		gen_dial_batch = model.interact(beam_search=False, dial_name_batch=dial_name_batch)
 
-			# check maximum act seq of each dialogue
-			max_act_len_batch = model.check_max_gen_act_seq(gen_dial_batch)
+		if config.reward_type == 'turn_reward':
+			avg_sys_r, avg_usr_r = model.get_turn_reward(gen_dial_batch)
+		else:
+			avg_sys_r, avg_usr_r = model.get_success_reward(gen_dial_batch, evaluator)
 
-			if config.reward_type == 'turn_reward':
-				avg_sys_r, avg_usr_r = model.get_turn_reward(gen_dial_batch)
-			else:
-				avg_sys_r, avg_usr_r = model.get_success_reward(gen_dial_batch, evaluator)
+		rl_loss = model.get_rl_loss(gen_dial_batch, 'sys')
+		grad_norm = model.update(rl_loss, 'rl_sys')
 
-			rl_loss = model.get_rl_loss(gen_dial_batch, 'sys')
-			grad_norm = model.update(rl_loss, 'rl_sys')
+		if config.rl_update_usr and epoch_idx < config.rl_usr_epoch:
+			rl_usr_loss = model.get_rl_loss(gen_dial_batch, 'usr')
+			grad_usr_norm = model.update(rl_usr_loss, 'rl_usr')
+		else:
+			rl_usr_loss, grad_usr_norm = 0, 0
 
-			if config.rl_update_usr and epoch_idx < config.rl_usr_epoch:
-				rl_usr_loss = model.get_rl_loss(gen_dial_batch, 'usr')
-				grad_usr_norm = model.update(rl_usr_loss, 'rl_usr')
-			else:
-				rl_usr_loss, grad_usr_norm = 0, 0
+		update_count += 1
+		print('idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f}'.
+			  format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm))
 
-			update_count += 1
-			gpu = torch.cuda.max_memory_allocated() // 1000000
-			print('idx: {}, loss sys: {:.3f} usr: {:.3f} | avg reward sys: {:.3f} usr {:.3f} | grad sys: {:.2f} usr: {:.2f} | gpu: {} | max_act_len: {} -> avg: {}'.format(update_count, rl_loss, rl_usr_loss, avg_sys_r, avg_usr_r, grad_norm, grad_usr_norm, gpu, max_act_len_batch, np.mean(max_act_len_batch)))
-
-			# trace generated dialogues
-			# for gen_dial in gen_dial_batch:
-			# 	for i, (act_usr, act_sys, word_usr, word_sys) in \
-			# 			enumerate(zip(gen_dial['act_usr'], gen_dial['act_sys'], gen_dial['word_usr'], gen_dial['word_sys'])):
-			# 		print('At side turn: {}'.format(i))
-			# 		print('USR: {} ({})'.format(word_usr, act_usr))
-			# 		print('SYS: {} ({})'.format(word_sys, act_sys))
-			del gen_dial_batch
-			del avg_sys_r, avg_usr_r
-			del rl_loss, rl_usr_loss
-			del grad_norm, grad_usr_norm
-			torch.cuda.empty_cache()
+		del gen_dial_batch
+		del avg_sys_r, avg_usr_r
+		del rl_loss, rl_usr_loss
+		del grad_norm, grad_usr_norm
+		torch.cuda.empty_cache()
 
 		# run sl for one batch if iterate between sl and rl
 		if config.rl_iterate:
@@ -265,8 +251,8 @@ def runOneEpoch(dType, epoch_idx, mode, beam_search=False):
 			joint_acc, sv_acc, slot_acc = evaluator.eval_dst(decode_all)
 		else: # oracle dst
 			joint_acc, sv_acc, slot_acc = 1, 1, 1
-		print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | reqt: {:.2f} ({}) | sys reward: {:.2f} {:.2f} {:.2f} {:.2f} | usr reward: {:.2f} {:.2f} {:.2f} | time: {:.0f}'
-			  .format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, reqt_acc, reqt_total, reward['ent'], reward['ask'], reward['miss'], reward['dom'], reward['re_info'], reward['re_ask'], reward['miss_ans'], time.time()-t0))
+		print('{} Eval Epoch: {} | Score: {:.1f} | Success: {:.1f}, Match: {:.1f} | BLEU usr: {:.1f} sys: {:.1f} | DST joint_acc: {:.2f}%, sv_acc: {:.2f}%, slot_acc: {:.2f}% | time: {:.0f}'
+			  .format(dType, epoch_idx, score, success, match, bleu_usr, bleu_sys, joint_acc*100, sv_acc*100, slot_acc*100, time.time()-t0))
 
 		# write output sample
 		if dType == 'test' and config.mode == 'test':
