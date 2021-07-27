@@ -10,11 +10,6 @@ python3.6 and the packages in `requirements.txt`. Install them via virtual envir
 >>> pip install -r requirements.txt
 ```
 
-Create necessary directories by
-```console
->>> bash src/prepare_directory.sh
-```
-
 ##Full Training Experiments
 ###Pre-process the raw MultiWOZ data first
 ```console
@@ -38,13 +33,16 @@ Simply run...
 ```
 - mode: "rl"
 
-###Testing the model
+###Testing your model
 Simply run...
 ```console
 >>> bash src/xxx.sh
 ```
 - mode: "test"
 
+###Test the provided model
+uncompress
+run test
 
 
 
