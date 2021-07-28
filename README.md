@@ -10,7 +10,7 @@ In this work, we propose a novel joint optimisation framework of both dialogue s
 dialogues (MultiWOZ). We further demonstrate the efficacy of our model in two transfer learning setups.
 Please refer to our paper for mode details.
 
-NB: The codebase is not completely clean and still in the process of refactoring. This would not affect the produced results.
+NB: The codebase is not completely clean and still in the process of refactoring.
 
 ## Requirements
 python3.6 and the packages in `requirements.txt`. Install them via virtual environment:
