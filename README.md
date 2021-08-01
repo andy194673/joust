@@ -4,11 +4,11 @@
 [**Full Training**](#Full-Training) | [**Transfer Learning**](#Transfer-Learning) |
 [**Citation**](#Citation) | [**Contact**](#Contact-Us)
 
-This is the source code of the paper [Transferable Dialogue Systems and User Simulators](https://aclanthology.org/2021.acl-long.13.pdf),
+This repository contains the source code for the paper [Transferable Dialogue Systems and User Simulators](https://aclanthology.org/2021.acl-long.13.pdf),
 which is accepted by ACL-IJCNLP 2021.
 In this work, we propose a novel joint optimisation framework of both dialogue system and user simulator for multi-domain task-oriented 
 dialogues (MultiWOZ). We further demonstrate the efficacy of our model in two transfer learning setups.
-Please refer to our paper for mode details.
+Please refer to the paper for more details.
 
 NB: The codebase is not completely clean and still in the process of refactoring.
 
